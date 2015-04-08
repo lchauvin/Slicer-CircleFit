@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Registration</category>
+  <title>CircleFit</title>
+  <description><![CDATA[This is a CLI module that can be bundled in an extension]]></description>
+  <version>0.0.1</version>
+  <documentation-url>http://www.example.com/Slicer/Modules/CircleFit</documentation-url>
+  <license>Slicer</license>
+  <contributor>Laurent Chauvin (BWH), Junichi Tokuda (BWH)</contributor>
+  <acknowledgements>This work was partially funded by NIH grant NXNNXXNNNNNN-NNXN</acknowledgements>
+  <parameters>
+    <label>IO</label>
+    <description><![CDATA[Input/output parameters]]></description>
+    <point multiple="true" coordinateSystem="lps">
+      <name>movingPoints</name>
+      <label>Register</label>
+      <longflag>--moving</longflag>
+      <description><![CDATA[Points to register (moving)]]></description>
+      <default>0,0,0</default>
+      <channel>input</channel>
+    </point>
+    <point multiple="true" coordinateSystem="lps">
+      <name>fixedPoints</name>
+      <label>To</label>
+      <longflag>--fixed</longflag>
+      <description><![CDATA[Reference points (fixed)]]></description>
+      <default>0,0,0</default>
+      <channel>input</channel>
+    </point>
+    <double>
+      <name>radius</name>
+      <longflag>radius</longflag>
+      <flag>r</flag>
+      <label>Radius</label>
+      <description><![CDATA[Radius of the fitting circle in mm]]></description>
+      <default>50.0</default>
+      <channel>input</channel>
+    </double>
+    <transform type="linear" fileExtensions=".txt">
+      <name>registration</name>
+      <label>Registration Transform</label>
+      <longflag>--registration</longflag>
+      <description><![CDATA[Output registration transform.]]></description>
+      <channel>output</channel>
+    </transform>
+  </parameters>
+</executable>
