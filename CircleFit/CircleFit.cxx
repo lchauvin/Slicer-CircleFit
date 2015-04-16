@@ -237,15 +237,12 @@ int main( int argc, char * argv[] )
     {
     registrationTransform->Rotate3D(nx, M_PI);
     registrationTransform->Rotate3D(principalVector, flippedBestAngle * M_PI / 180);
-    std::cout << flippedBestAngle * M_PI / 180 << " (flipped)" << std::endl;
+    std::cout << flippedBestAngle << " (flipped)" << std::endl;
     }
   else
     {
-
-
-
     registrationTransform->Rotate3D(principalVector, bestAngle * M_PI / 180);
-    std::cout << bestAngle * M_PI / 180 << std::endl;
+    std::cout << bestAngle << std::endl;
     }
   registrationTransform->SetOffset(center);
 
@@ -444,10 +441,7 @@ void RotatePoints(PointListType::Pointer inputPoints,
 
 double CalcAverageMinDistance(PointListType::Pointer set1, PointListType::Pointer set2)
 {
-  if (set1->Size() != set2->Size())
-    {
-    return -1.0;
-    }
+  // TODO: What if set1 and set2 have different number of points ?
 
   double averageMinDist = 0.0;
   int numberOfPoints = 0;
