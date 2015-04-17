@@ -37,7 +37,8 @@ double AngleBetweenPoints(VectorType p1, VectorType p2, VectorType p3);
 void RotatePoints(PointListType::Pointer inputPoints,
 		  VectorType principalVector, VectorType center, double angle,
 		  PointListType::Pointer outputPoints);
-double CalcAverageMinDistance(PointListType::Pointer set1, PointListType::Pointer set2);
+double AverageMinimumSquareDistance(PointListType::Pointer set1, PointListType::Pointer set2);
+
 double FineTuneAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
 		     VectorType principalVector, VectorType center, double estimatedAngle,
 		     double tuningStep,
@@ -383,7 +384,7 @@ double FindEstimatedAngle(PointListType::Pointer inPlanePoints, PointListType::P
     RotatePoints(inPlanePoints,
 		 principalVector, center, currentAngle,
 		 rotatedPoints);
-    double averageMinDist = CalcAverageMinDistance(rotatedPoints, dstPoints);
+    double averageMinDist = AverageMinimumSquareDistance(rotatedPoints, dstPoints);
 
     if (minAverageMinDist < 0 || averageMinDist < minAverageMinDist)
       {
@@ -436,39 +437,39 @@ void RotatePoints(PointListType::Pointer inputPoints,
     }
 }
 
-//--------------------------------------------------------------------------------
-// Return the average minimum distance between 2 pointsets
 
-double CalcAverageMinDistance(PointListType::Pointer set1, PointListType::Pointer set2)
+//--------------------------------------------------------------------------------
+// Return the average minimum square distance between 2 pointsets
+
+double AverageMinimumSquareDistance(PointListType::Pointer set1, PointListType::Pointer set2)
 {
   // TODO: What if set1 and set2 have different number of points ?
 
-  double averageMinDist = 0.0;
+  double total = 0.0;
   int numberOfPoints = 0;
 
   for (PointListIteratorType iter1 = set1->Begin(); iter1 != set1->End(); ++iter1)
     {
-    double minDistance = -1.0;
+    double minSquareDistance = -1.0;
     VectorType p1 = iter1.GetMeasurementVector();
 
     for (PointListIteratorType iter2 = set2->Begin(); iter2 != set2->End(); ++iter2)
       {
       VectorType p2 = iter2.GetMeasurementVector();
 
-      double distance = std::sqrt(std::pow(p2[0] - p1[0],2) +
-				  std::pow(p2[1] - p1[1],2) +
-				  std::pow(p2[2] - p1[2],2));
+      double squareDistance = std::pow(p2[0]-p1[0],2) + std::pow(p2[1]-p1[1],2) + std::pow(p2[2]-p1[2],2);
 
-      if (minDistance < 0 || distance < minDistance)
+      if (minSquareDistance < 0 || squareDistance < minSquareDistance)
 	{
-	minDistance = distance;
+        minSquareDistance = squareDistance;
 	}
       }
-    averageMinDist += minDistance;
+    average += minSquareDistance;
     numberOfPoints++;
     }
-  averageMinDist /= numberOfPoints;
-  return averageMinDist;
+
+  return total / (double) numberOfPoints;
+
 }
 
 //--------------------------------------------------------------------------------
@@ -493,7 +494,7 @@ double FineTuneAngle(PointListType::Pointer inPlanePoints, PointListType::Pointe
     RotatePoints(inPlanePoints,
 		 principalVector, center, angle,
 		 rotatedPoints);
-    double averageMinDist = CalcAverageMinDistance(rotatedPoints, dstPoints);
+    double averageMinDist = AverageMinimumSquareDistance(rotatedPoints, dstPoints);
 
     if (minAvgMinDist < 0 || averageMinDist < minAvgMinDist)
       {
