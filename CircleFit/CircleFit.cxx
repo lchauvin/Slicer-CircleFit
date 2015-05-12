@@ -33,7 +33,7 @@ double FindRotationAngle(PointListType::Pointer inPlanePoints, PointListType::Po
 			 double& minAvgMinDist);
 double FindEstimatedAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
 			  VectorType principalVector, VectorType center);
-double AngleBetweenPoints(VectorType p1, VectorType p2, VectorType p3);
+double AngleBetweenPoints(VectorType p1, VectorType p2, VectorType p3, VectorType principalVector);
 void RotatePoints(PointListType::Pointer inputPoints,
 		  VectorType principalVector, VectorType center, double angle,
 		  PointListType::Pointer outputPoints);
@@ -349,13 +349,10 @@ double FindRotationAngle(PointListType::Pointer inPlanePoints, PointListType::Po
 {
   double estimatedAngle = FindEstimatedAngle(inPlanePoints, dstPoints,
 					     principalVector, center);
-  std::cerr << "Estimated Angle: " << estimatedAngle << std::endl;
   double fineTunedAngle = FineTuneAngle(inPlanePoints, dstPoints,
 					principalVector, center, estimatedAngle,
 					tuningStep,
 					minAvgMinDist);
-  std::cerr << "Fine Tuned Angle: " << fineTunedAngle << std::endl;
-
   return fineTunedAngle;
 }
 
@@ -379,7 +376,7 @@ double FindEstimatedAngle(PointListType::Pointer inPlanePoints, PointListType::P
     {
     rotatedPoints->Clear();
 
-    double currentAngle = AngleBetweenPoints(selectedPoint, iter.GetMeasurementVector(), center);
+    double currentAngle = AngleBetweenPoints(selectedPoint, iter.GetMeasurementVector(), center, principalVector);
     RotatePoints(inPlanePoints,
 		 principalVector, center, currentAngle,
 		 rotatedPoints);
@@ -398,17 +395,39 @@ double FindEstimatedAngle(PointListType::Pointer inPlanePoints, PointListType::P
 //--------------------------------------------------------------------------------
 // Return the angle (in degrees) between 3 points.
 
-double AngleBetweenPoints(VectorType p1, VectorType p2, VectorType p3)
+double AngleBetweenPoints(VectorType p1, VectorType p2, VectorType p3, VectorType principalVector)
 {
+  // Calculate angle value
+  VectorType v1 = p1 - p3;
+  VectorType v2 = p2 - p3;
+  double dotProduct = v1[0]*v2[0] + v1[1]*v2[1] + v1[2]*v2[2];
+  double v1Norm = std::sqrt(std::pow(v1[0],2) + std::pow(v1[1],2) + std::pow(v1[2],2));
+  double v2Norm = std::sqrt(std::pow(v2[0],2) + std::pow(v2[1],2) + std::pow(v2[2],2));
+  double theta = std::acos( dotProduct / (v1Norm*v2Norm) );
 
-  VectorType p1p3 = p1 - p3;
-  VectorType p2p3 = p2 - p3;
-  double dotProduct = p1p3[0]*p2p3[0] + p1p3[1]*p2p3[1] + p1p3[2]*p2p3[2];
-  double p1p3Norm = std::sqrt(std::pow(p1p3[0],2) + std::pow(p1p3[1],2) + std::pow(p1p3[2],2));
-  double p2p3Norm = std::sqrt(std::pow(p2p3[0],2) + std::pow(p2p3[1],2) + std::pow(p2p3[2],2));
-  double theta = std::acos( dotProduct / (p1p3Norm*p2p3Norm) );
+  // Calculate angle between v1,v2 perpendicular vector and principal vector
+  // If angle ~180 degrees, sign of the rotation angle should be inverted
+  double rightHandAxis[3] = { v1[1]*v2[2] - v1[2]*v2[1],
+			      v1[2]*v2[0] - v1[0]*v2[2],
+			      v1[0]*v2[1] - v1[1]*v2[0] };
 
-  return theta * 180 / M_PI;
+  double rotationAxisDotProduct =
+    rightHandAxis[0]*principalVector[0] +
+    rightHandAxis[1]*principalVector[1] +
+    rightHandAxis[2]*principalVector[2];
+
+  double crossProduct[3] = { rightHandAxis[1]*principalVector[2] - rightHandAxis[2]*principalVector[1],
+			     rightHandAxis[2]*principalVector[0] - rightHandAxis[0]*principalVector[2],
+			     rightHandAxis[0]*principalVector[1] - rightHandAxis[1]*principalVector[0] };
+
+  double crossProductNorm = std::sqrt(std::pow(crossProduct[0],2) +
+				      std::pow(crossProduct[1],2) +
+				      std::pow(crossProduct[2],2));
+
+  double axisAngle = std::atan2(crossProductNorm, rotationAxisDotProduct) * 180 / M_PI;
+  int rotationSign = ((axisAngle < 90 && axisAngle > -90) ? 1 : -1);
+
+  return rotationSign * theta * 180 / M_PI;
 }
 
 //--------------------------------------------------------------------------------
