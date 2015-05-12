@@ -43,5 +43,13 @@
       <description><![CDATA[Output registration transform.]]></description>
       <channel>output</channel>
     </transform>
+    <point multiple="true" coordinateSystem="lps">
+      <name>sortedFixedPoints</name>
+      <label>sorted</label>
+      <longflag>--sorted</longflag>
+      <description><![CDATA[Sorted fixed points. Result of matching with the moving points.]]></description>
+      <default>0,0,0</default>
+      <channel>output</channel>
+    </point>
   </parameters>
 </executable>

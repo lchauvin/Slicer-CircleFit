@@ -39,24 +39,29 @@ typedef itk::Statistics::CovarianceSampleFilter< PointListType > CovarianceAlgor
 typedef itk::SymmetricEigenAnalysis< CovarianceAlgorithmType::MatrixType, ArrayType, MatrixType > SymmetricEigenAnalysisType;
 
 
-int CalcIntersectionOfPerpendicularBisectors2D(VectorType& p1, VectorType& p2, VectorType& p3, VectorType& intersec, double radius);
+int    CalcIntersectionOfPerpendicularBisectors2D(VectorType& p1, VectorType& p2, VectorType& p3, VectorType& intersec, double radius);
 
 double FindRotationAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
 			 VectorType principalVector, VectorType center,
 			 double tuningStep,
 			 double& minAvgMinDist);
+
 double FindEstimatedAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
 			  VectorType principalVector, VectorType center);
+
 double AngleBetweenPoints(VectorType p1, VectorType p2, VectorType p3);
-void RotatePoints(PointListType::Pointer inputPoints,
-		  VectorType principalVector, VectorType center, double angle,
-		  PointListType::Pointer outputPoints);
+
+void   RotatePoints(PointListType::Pointer inputPoints,
+                    VectorType principalVector, VectorType center, double angle,
+                    PointListType::Pointer outputPoints);
+
 double AverageMinimumSquareDistance(PointListType::Pointer set1, PointListType::Pointer set2);
 
 double FineTuneAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
 		     VectorType principalVector, VectorType center, double estimatedAngle,
 		     double tuningStep,
 		     double& minAvgMinDist);
+
 
 int main( int argc, char * argv[] )
 {
@@ -349,7 +354,7 @@ int CalcIntersectionOfPerpendicularBisectors2D(VectorType& p1, VectorType& p2, V
 }
 
 //--------------------------------------------------------------------------------
-// First step consistss of calculating a first estimation of the angle by matching
+// First step consists of calculating a first estimation of the angle by matching
 // a selected point from one set to all points of the other set and calculate
 // average minimum distance for each rotation. Use the angle with minimum average minimum
 // distance as the angle estimation.
