@@ -483,7 +483,7 @@ double AverageMinimumSquareDistance(PointListType::Pointer set1, PointListType::
         minSquareDistance = squareDistance;
 	}
       }
-    average += minSquareDistance;
+    total += minSquareDistance;
     numberOfPoints++;
     }
 
