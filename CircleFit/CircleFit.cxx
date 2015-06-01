@@ -52,7 +52,6 @@ double AngleBetweenPoints(VectorType p1, VectorType p2, VectorType p3, VectorTyp
 void RotatePoints(PointListType::Pointer inputPoints,
 		  VectorType principalVector, VectorType center, double angle,
 		  PointListType::Pointer outputPoints);
-double CalcAverageMinDistance(PointListType::Pointer set1, PointListType::Pointer set2);
 double FineTuneAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
 		     VectorType principalVector, VectorType center, double estimatedAngle,
 		     double tuningStep,
