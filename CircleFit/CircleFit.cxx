@@ -44,23 +44,21 @@ int    CalcIntersectionOfPerpendicularBisectors2D(VectorType& p1, VectorType& p2
 double FindRotationAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
 			 VectorType principalVector, VectorType center,
 			 double tuningStep,
-			 double& minAvgMinDist);
+			 double& minAvgMinSqDist);
 
 double FindEstimatedAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
 			  VectorType principalVector, VectorType center);
-
-double AngleBetweenPoints(VectorType p1, VectorType p2, VectorType p3);
-
-void   RotatePoints(PointListType::Pointer inputPoints,
-                    VectorType principalVector, VectorType center, double angle,
-                    PointListType::Pointer outputPoints);
-
-double AverageMinimumSquareDistance(PointListType::Pointer set1, PointListType::Pointer set2);
-
+double AngleBetweenPoints(VectorType p1, VectorType p2, VectorType p3, VectorType principalVector);
+void RotatePoints(PointListType::Pointer inputPoints,
+		  VectorType principalVector, VectorType center, double angle,
+		  PointListType::Pointer outputPoints);
+double CalcAverageMinDistance(PointListType::Pointer set1, PointListType::Pointer set2);
 double FineTuneAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
 		     VectorType principalVector, VectorType center, double estimatedAngle,
 		     double tuningStep,
-		     double& minAvgMinDist);
+		     double& minAvgMinSqDist);
+
+double AverageMinimumSquareDistance(PointListType::Pointer set1, PointListType::Pointer set2);
 
 
 int main( int argc, char * argv[] )
@@ -212,16 +210,16 @@ int main( int argc, char * argv[] )
     }
 
   //----------------------------------------
-  // Rotate point around principal vector and compute average minimum distance
+  // Rotate point around principal vector and compute average minimum squiare distance
 
-  double minAvgMinDist = -1.0;
+  double minAvgMinSqDist = -1.0;
   double bestAngle = FindRotationAngle(inPlanePoints, dstPoints,
 				       principalVector, center,
 				       0.1,
-				       minAvgMinDist);
+				       minAvgMinSqDist);
 
   //----------------------------------------
-  // Rotate circle around one of the other axis, nx or ny, and recalculate average minimum distance
+  // Rotate circle around one of the other axis, nx or ny, and recalculate average minimum squiare distance
   // to also find the global minimum (including symmetry)
 
   TransformType::Pointer flippingTransform = TransformType::New();
@@ -239,11 +237,11 @@ int main( int argc, char * argv[] )
     flippedInPlanePoints->PushBack(vp);
     }
 
-  double flippedMinAvgMinDist = -1.0;
+  double flippedMinAvgMinSqDist = -1.0;
   double flippedBestAngle = FindRotationAngle(flippedInPlanePoints, dstPoints,
 					      principalVector, center,
 					      0.1,
-					      flippedMinAvgMinDist);
+					      flippedMinAvgMinSqDist);
 
   //----------------------------------------
   // Build registration transform
@@ -253,7 +251,7 @@ int main( int argc, char * argv[] )
   registrationTransform->SetMatrix(originalToPlaneMatrix);
 
   std::cout << "Fitting Angle: ";
-  if (flippedMinAvgMinDist < minAvgMinDist)
+  if (flippedMinAvgMinSqDist < minAvgMinSqDist)
     {
     registrationTransform->Rotate3D(nx, M_PI);
     registrationTransform->Rotate3D(principalVector, flippedBestAngle * M_PI / 180);
@@ -356,8 +354,8 @@ int CalcIntersectionOfPerpendicularBisectors2D(VectorType& p1, VectorType& p2, V
 //--------------------------------------------------------------------------------
 // First step consists of calculating a first estimation of the angle by matching
 // a selected point from one set to all points of the other set and calculate
-// average minimum distance for each rotation. Use the angle with minimum average minimum
-// distance as the angle estimation.
+// average minimum square distance for each rotation. Use the angle with minimum average minimum
+// square distance as the angle estimation.
 // Second step consists of rotating first set around estimated angle +/- 2 degrees with
 // a fine step (0.1 degree).
 // Return best fitting angle (in degrees) between 2 pointsets.
@@ -365,23 +363,20 @@ int CalcIntersectionOfPerpendicularBisectors2D(VectorType& p1, VectorType& p2, V
 double FindRotationAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
 			 VectorType principalVector, VectorType center,
 			 double tuningStep,
-			 double& minAvgMinDist)
+			 double& minAvgMinSqDist)
 {
   double estimatedAngle = FindEstimatedAngle(inPlanePoints, dstPoints,
 					     principalVector, center);
-  std::cerr << "Estimated Angle: " << estimatedAngle << std::endl;
   double fineTunedAngle = FineTuneAngle(inPlanePoints, dstPoints,
 					principalVector, center, estimatedAngle,
 					tuningStep,
-					minAvgMinDist);
-  std::cerr << "Fine Tuned Angle: " << fineTunedAngle << std::endl;
-
+					minAvgMinSqDist);
   return fineTunedAngle;
 }
 
 //--------------------------------------------------------------------------------
 // Estimate best fitting angle by computing angle between 2 given points (and center),
-// and compute average minimum distance for this rotation.
+// and compute average minimum square distance for this rotation.
 // Process is repeated for all 3-points combination.
 // Return estimated angle (in degrees) between 2 pointsets.
 
@@ -389,7 +384,7 @@ double FindEstimatedAngle(PointListType::Pointer inPlanePoints, PointListType::P
 			  VectorType principalVector, VectorType center)
 {
   double estimatedAngle = -1.0;
-  double minAverageMinDist = -1.0;
+  double minAverageMinSqDist = -1.0;
   PointListType::Pointer rotatedPoints = PointListType::New();
 
   // Select first point
@@ -399,15 +394,15 @@ double FindEstimatedAngle(PointListType::Pointer inPlanePoints, PointListType::P
     {
     rotatedPoints->Clear();
 
-    double currentAngle = AngleBetweenPoints(selectedPoint, iter.GetMeasurementVector(), center);
+    double currentAngle = AngleBetweenPoints(selectedPoint, iter.GetMeasurementVector(), center, principalVector);
     RotatePoints(inPlanePoints,
 		 principalVector, center, currentAngle,
 		 rotatedPoints);
-    double averageMinDist = AverageMinimumSquareDistance(rotatedPoints, dstPoints);
+    double averageMinSqDist = AverageMinimumSquareDistance(rotatedPoints, dstPoints);
 
-    if (minAverageMinDist < 0 || averageMinDist < minAverageMinDist)
+    if (minAverageMinSqDist < 0 || averageMinSqDist < minAverageMinSqDist)
       {
-      minAverageMinDist = averageMinDist;
+      minAverageMinSqDist = averageMinSqDist;
       estimatedAngle = currentAngle;
       }
     }
@@ -418,17 +413,39 @@ double FindEstimatedAngle(PointListType::Pointer inPlanePoints, PointListType::P
 //--------------------------------------------------------------------------------
 // Return the angle (in degrees) between 3 points.
 
-double AngleBetweenPoints(VectorType p1, VectorType p2, VectorType p3)
+double AngleBetweenPoints(VectorType p1, VectorType p2, VectorType p3, VectorType principalVector)
 {
+  // Calculate angle value
+  VectorType v1 = p1 - p3;
+  VectorType v2 = p2 - p3;
+  double dotProduct = v1[0]*v2[0] + v1[1]*v2[1] + v1[2]*v2[2];
+  double v1Norm = std::sqrt(std::pow(v1[0],2) + std::pow(v1[1],2) + std::pow(v1[2],2));
+  double v2Norm = std::sqrt(std::pow(v2[0],2) + std::pow(v2[1],2) + std::pow(v2[2],2));
+  double theta = std::acos( dotProduct / (v1Norm*v2Norm) );
 
-  VectorType p1p3 = p1 - p3;
-  VectorType p2p3 = p2 - p3;
-  double dotProduct = p1p3[0]*p2p3[0] + p1p3[1]*p2p3[1] + p1p3[2]*p2p3[2];
-  double p1p3Norm = std::sqrt(std::pow(p1p3[0],2) + std::pow(p1p3[1],2) + std::pow(p1p3[2],2));
-  double p2p3Norm = std::sqrt(std::pow(p2p3[0],2) + std::pow(p2p3[1],2) + std::pow(p2p3[2],2));
-  double theta = std::acos( dotProduct / (p1p3Norm*p2p3Norm) );
+  // Calculate angle between v1,v2 perpendicular vector and principal vector
+  // If angle ~180 degrees, sign of the rotation angle should be inverted
+  double rightHandAxis[3] = { v1[1]*v2[2] - v1[2]*v2[1],
+			      v1[2]*v2[0] - v1[0]*v2[2],
+			      v1[0]*v2[1] - v1[1]*v2[0] };
 
-  return theta * 180 / M_PI;
+  double rotationAxisDotProduct =
+    rightHandAxis[0]*principalVector[0] +
+    rightHandAxis[1]*principalVector[1] +
+    rightHandAxis[2]*principalVector[2];
+
+  double crossProduct[3] = { rightHandAxis[1]*principalVector[2] - rightHandAxis[2]*principalVector[1],
+			     rightHandAxis[2]*principalVector[0] - rightHandAxis[0]*principalVector[2],
+			     rightHandAxis[0]*principalVector[1] - rightHandAxis[1]*principalVector[0] };
+
+  double crossProductNorm = std::sqrt(std::pow(crossProduct[0],2) +
+				      std::pow(crossProduct[1],2) +
+				      std::pow(crossProduct[2],2));
+
+  double axisAngle = std::atan2(crossProductNorm, rotationAxisDotProduct) * 180 / M_PI;
+  int rotationSign = ((axisAngle < 90 && axisAngle > -90) ? 1 : -1);
+
+  return rotationSign * theta * 180 / M_PI;
 }
 
 //--------------------------------------------------------------------------------
@@ -483,7 +500,7 @@ double AverageMinimumSquareDistance(PointListType::Pointer set1, PointListType::
         minSquareDistance = squareDistance;
 	}
       }
-    average += minSquareDistance;
+    total += minSquareDistance;
     numberOfPoints++;
     }
 
@@ -494,13 +511,13 @@ double AverageMinimumSquareDistance(PointListType::Pointer set1, PointListType::
 //--------------------------------------------------------------------------------
 // Rotate pointset around principal vector, with the circle center as rotation center,
 // by 'estimatedAngle +/- 2' degrees with a fine angle step (0.1 degree), and calculate
-// average minimum distance for each. Keep the angle with the minimum average minimum distance.
-// Return fine tuned angle between both pointsets.
+// average minimum square distance for each. Keep the angle with the minimum average
+// minimum square distance. Return fine tuned angle between both pointsets.
 
 double FineTuneAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
 		     VectorType principalVector, VectorType center, double estimatedAngle,
 		     double tuningStep,
-		     double& minAvgMinDist)
+		     double& minAvgMinSqDist)
 {
     double fineTunedAngle = -1.0;
     PointListType::Pointer rotatedPoints = PointListType::New();
@@ -513,11 +530,11 @@ double FineTuneAngle(PointListType::Pointer inPlanePoints, PointListType::Pointe
     RotatePoints(inPlanePoints,
 		 principalVector, center, angle,
 		 rotatedPoints);
-    double averageMinDist = AverageMinimumSquareDistance(rotatedPoints, dstPoints);
+    double averageMinSqDist = AverageMinimumSquareDistance(rotatedPoints, dstPoints);
 
-    if (minAvgMinDist < 0 || averageMinDist < minAvgMinDist)
+    if (minAvgMinSqDist < 0 || averageMinSqDist < minAvgMinSqDist)
       {
-      minAvgMinDist = averageMinDist;
+      minAvgMinSqDist = averageMinSqDist;
       fineTunedAngle = angle;
       }
     }
