@@ -41,8 +41,8 @@ typedef itk::SymmetricEigenAnalysis< CovarianceAlgorithmType::MatrixType, ArrayT
 
 int    CalcIntersectionOfPerpendicularBisectors2D(VectorType& p1, VectorType& p2, VectorType& p3, VectorType& intersec, double radius);
 
-void   EstimateCenter(PointListType::Pointer points, MatrixType originalToPlaneMatrix, VectorType& center, double radius);
-double FindRotationAngle(MatrixType originalToPlaneMatrix,
+void   EstimateCenter(PointListType::Pointer points, MatrixType& originalToPlaneMatrix, VectorType& center, double radius);
+double FindRotationAngle(MatrixType& originalToPlaneMatrix,
                          PointListType::Pointer srcPoints,
                          PointListType::Pointer dstPoints,
 			 VectorType principalVector, VectorType center,
@@ -126,7 +126,6 @@ int main( int argc, char * argv[] )
   VectorType nx =  eigenMatrix[2];
   VectorType ny =  eigenMatrix[1];
   VectorType nz =  eigenMatrix[0];
-  VectorType principalVector = nz;
 
   //----------------------------------------
   // Calculate matrix from original coordinate system to plane coordinate system
@@ -138,6 +137,7 @@ int main( int argc, char * argv[] )
     originalToPlaneMatrix[i][1] = ny[i];
     originalToPlaneMatrix[i][2] = nz[i];
     }
+  VectorType principalVector = nz;
     
   // Estimate the center
   VectorType center;
@@ -154,20 +154,21 @@ int main( int argc, char * argv[] )
 
   //----------------------------------------
   // Flip the fitted plane (about ny) and calculate the best rotation angle
-
+  MatrixType flippedOriginalToPlaneMatrix;
   for (int i = 0; i < 3; ++i)
     {
-    originalToPlaneMatrix[i][0] = -nx[i];
-    originalToPlaneMatrix[i][1] = ny[i];
-    originalToPlaneMatrix[i][2] = -nz[i];
+    flippedOriginalToPlaneMatrix[i][0] = -nx[i];
+    flippedOriginalToPlaneMatrix[i][1] = ny[i];
+    flippedOriginalToPlaneMatrix[i][2] = -nz[i];
     }
+  VectorType flippedPrincipalVector = -nz;
 
   // No need to estimate the center because it remains at the same point when the plane is flipped
   double flippedMinAvgMinSqDist = -1.0;
-  double flippedBestAngle = FindRotationAngle(originalToPlaneMatrix,
+  double flippedBestAngle = FindRotationAngle(flippedOriginalToPlaneMatrix,
                                               srcPoints,
                                               dstPoints,
-                                              principalVector,
+                                              flippedPrincipalVector,
                                               center,
                                               M_PI*0.1/180.0, M_PI*2.0/180.0,
                                               flippedMinAvgMinSqDist);
@@ -177,20 +178,21 @@ int main( int argc, char * argv[] )
   
   TransformType::Pointer registrationTransform = TransformType::New();
   registrationTransform->SetIdentity();
-  registrationTransform->SetMatrix(originalToPlaneMatrix);
 
   std::cout << "Fitting Angle: ";
-  if (flippedMinAvgMinSqDist < minAvgMinSqDist)
+  if (minAvgMinSqDist < flippedMinAvgMinSqDist)
     {
-    registrationTransform->Rotate3D(nx, M_PI);
-    registrationTransform->Rotate3D(principalVector, flippedBestAngle);
-    std::cout << flippedBestAngle << " (flipped)" << std::endl;
-    }
-  else
-    {
+    registrationTransform->SetMatrix(originalToPlaneMatrix);
     registrationTransform->Rotate3D(principalVector, bestAngle);
     std::cout << bestAngle << std::endl;
     }
+  else
+    {
+    registrationTransform->SetMatrix(flippedOriginalToPlaneMatrix);
+    registrationTransform->Rotate3D(flippedPrincipalVector, flippedBestAngle);
+    std::cout << flippedBestAngle << " (flipped)" << std::endl;
+    }
+
   registrationTransform->SetOffset(center);
 
   TransformWriterType::Pointer registrationTransformWriter = TransformWriterType::New();
@@ -284,7 +286,7 @@ int CalcIntersectionOfPerpendicularBisectors2D(VectorType& p1, VectorType& p2, V
 
 //--------------------------------------------------------------------------------
 // Estimate the center of the circle from the points on the arc
-void EstimateCenter(PointListType::Pointer points, MatrixType originalToPlaneMatrix, VectorType& center, double radius=0)
+void EstimateCenter(PointListType::Pointer points, MatrixType& originalToPlaneMatrix, VectorType& center, double radius=0)
 {
 
   //----------------------------------------
@@ -310,7 +312,6 @@ void EstimateCenter(PointListType::Pointer points, MatrixType originalToPlaneMat
     meanPoint = meanPoint + iter.GetMeasurementVector();
     }
   meanPoint = meanPoint / (double)points->Size();
-  std::cerr << "EstimateCenter meanPoint = " << meanPoint << std::endl;
 
   //----------------------------------------
   // Project all the points to the fitted plane.
@@ -383,7 +384,7 @@ void EstimateCenter(PointListType::Pointer points, MatrixType originalToPlaneMat
 // a fine step (0.1 degree).
 // Return best fitting angle (in degrees) between 2 pointsets.
 
-double FindRotationAngle(MatrixType originalToPlaneMatrix,
+double FindRotationAngle(MatrixType& originalToPlaneMatrix,
                          PointListType::Pointer srcPoints,
                          PointListType::Pointer dstPoints,
 			 VectorType principalVector, VectorType center,
