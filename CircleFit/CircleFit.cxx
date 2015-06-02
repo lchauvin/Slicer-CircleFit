@@ -41,10 +41,7 @@ typedef itk::SymmetricEigenAnalysis< CovarianceAlgorithmType::MatrixType, ArrayT
 
 int    CalcIntersectionOfPerpendicularBisectors2D(VectorType& p1, VectorType& p2, VectorType& p3, VectorType& intersec, double radius);
 
-//double FindRotationAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
-//			 VectorType principalVector, VectorType center,
-//			 double tuningStep, double tuningRange,
-//			 double& minAvgMinSqDist);
+void   EstimateCenter(PointListType::Pointer points, MatrixType originalToPlaneMatrix, VectorType& center, double radius);
 double FindRotationAngle(MatrixType originalToPlaneMatrix,
                          PointListType::Pointer srcPoints,
                          PointListType::Pointer dstPoints,
@@ -96,10 +93,15 @@ int main( int argc, char * argv[] )
     }
 
   //----------------------------------------
-  // TODO: Calculate the normal vector, radius, and center point of the model circle
+  // Calculate the normal vector, radius, and center point of the model circle
   // based on the movingPoints.
   // Assume that the fixed points were generated from the model
   // and does not contain error.
+
+  VectorType v1 = srcPoints->GetMeasurementVector(1)-srcPoints->GetMeasurementVector(0);
+  VectorType v2 = srcPoints->GetMeasurementVector(2)-srcPoints->GetMeasurementVector(0);
+  VectorType srcNormal = itk::CrossProduct(v1, v2);
+
 
   //----------------------------------------
   // Perform PCA
@@ -127,76 +129,6 @@ int main( int argc, char * argv[] )
   VectorType principalVector = nz;
 
   //----------------------------------------
-  // Calculate the average position of the all points.
-  // This is used as the origin of the new coordinate system on the
-  // fitted plane.
-
-  CovarianceAlgorithmType::MeasurementVectorType meanPoint;
-  meanPoint = covarianceAlgorithm->GetMean();
-  
-  //----------------------------------------
-  // Project all the points to the fitted plane.
-
-  PointListType::Pointer projectedPoints = PointListType::New();
-  for (PointListIteratorType iter = dstPoints->Begin(); iter != dstPoints->End(); ++iter)
-    {
-    VectorType p1;
-    VectorType p2;
-    p1 = iter.GetMeasurementVector() - meanPoint;
-    p2[0] = p1*nx;
-    p2[1] = p1*ny;
-    p2[2] = 0.0;
-    projectedPoints->PushBack(p2);
-    }
-
-  //----------------------------------------
-  // Pick up every combination of three points from the list and calculate
-  // the intersection of the perpendicular bisectors of the two chords connecting
-  // the three points.
-
-  VectorType meanIntersect;
-  meanIntersect[0] = 0.0;
-  meanIntersect[1] = 0.0;
-  meanIntersect[2] = 0.0;
-
-  int nPoints = 0;
-  int nPointsUsed = 0;
-
-  for (PointListIteratorType iter1 = projectedPoints->Begin(); iter1 != projectedPoints->End(); ++iter1)
-    {
-    PointListIteratorType iter2 = iter1;
-    for (++iter2; iter2 != projectedPoints->End(); ++iter2)
-      {
-      PointListIteratorType iter3 = iter2;
-      for (++iter3; iter3 != projectedPoints->End(); ++iter3)
-        {
-        VectorType p1 = iter1.GetMeasurementVector();
-        VectorType p2 = iter2.GetMeasurementVector();
-        VectorType p3 = iter3.GetMeasurementVector();
-        VectorType c;
-
-        nPoints ++;
-        if (CalcIntersectionOfPerpendicularBisectors2D(p1, p2, p3, c, radius) > 0)
-          {
-          meanIntersect = meanIntersect + c;
-          nPointsUsed ++;
-          }
-        }
-      }
-    }
-  meanIntersect = meanIntersect / nPointsUsed;
-
-  //----------------------------------------
-  // Transform the center point to the original coordinate system
-
-  VectorType center = meanIntersect[0] * nx + meanIntersect[1] * ny + meanIntersect[2] * nz + meanPoint;
-
-  std::cout << "Number of estimated center points: " << nPoints << std::endl;
-  std::cout << "Number of estimated center points used: " << nPointsUsed << std::endl;
-  std::cout << "Center = " << center << std::endl;  
-  std::cout << std::endl;
-
-  //----------------------------------------
   // Calculate matrix from original coordinate system to plane coordinate system
 
   MatrixType originalToPlaneMatrix;
@@ -207,6 +139,10 @@ int main( int argc, char * argv[] )
     originalToPlaneMatrix[i][2] = nz[i];
     }
     
+  // Estimate the center
+  VectorType center;
+  EstimateCenter(dstPoints, originalToPlaneMatrix, center, radius);
+
   double minAvgMinSqDist = -1.0;
   double bestAngle = FindRotationAngle(originalToPlaneMatrix,
                                        srcPoints,
@@ -226,6 +162,7 @@ int main( int argc, char * argv[] )
     originalToPlaneMatrix[i][2] = -nz[i];
     }
 
+  // No need to estimate the center because it remains at the same point when the plane is flipped
   double flippedMinAvgMinSqDist = -1.0;
   double flippedBestAngle = FindRotationAngle(originalToPlaneMatrix,
                                               srcPoints,
@@ -343,6 +280,100 @@ int CalcIntersectionOfPerpendicularBisectors2D(VectorType& p1, VectorType& p2, V
   return 1;
 }
 
+
+
+//--------------------------------------------------------------------------------
+// Estimate the center of the circle from the points on the arc
+void EstimateCenter(PointListType::Pointer points, MatrixType originalToPlaneMatrix, VectorType& center, double radius=0)
+{
+
+  //----------------------------------------
+  // Transform the center point to the original coordinate system
+  VectorType nx;
+  VectorType ny;
+  VectorType nz;
+
+  for (int i = 0; i < 3; ++i) // TODO: check if this is correct
+    {
+    nx[i] = originalToPlaneMatrix[i][0];
+    ny[i] = originalToPlaneMatrix[i][1];
+    nz[i] = originalToPlaneMatrix[i][2];
+    }
+  
+  //----------------------------------------
+  // Calculate the average position of the all points.
+  // This is used as the origin of the new coordinate system on the
+  // fitted plane.
+  VectorType meanPoint;
+  for (PointListIteratorType iter = points->Begin(); iter != points->End(); ++iter)
+    {
+    meanPoint = meanPoint + iter.GetMeasurementVector();
+    }
+  meanPoint = meanPoint / (double)points->Size();
+  std::cerr << "EstimateCenter meanPoint = " << meanPoint << std::endl;
+
+  //----------------------------------------
+  // Project all the points to the fitted plane.
+
+  PointListType::Pointer projectedPoints = PointListType::New();
+  for (PointListIteratorType iter = points->Begin(); iter != points->End(); ++iter)
+    {
+    VectorType p1;
+    VectorType p2;
+    p1 = iter.GetMeasurementVector() - meanPoint;
+    p2[0] = p1*nx;
+    p2[1] = p1*ny;
+    p2[2] = 0.0;
+    projectedPoints->PushBack(p2);
+    }
+
+  //----------------------------------------
+  // Pick up every combination of three points from the list and calculate
+  // the intersection of the perpendicular bisectors of the two chords connecting
+  // the three points.
+
+  VectorType meanIntersect;
+  meanIntersect[0] = 0.0;
+  meanIntersect[1] = 0.0;
+  meanIntersect[2] = 0.0;
+
+  int nPoints = 0;
+  int nPointsUsed = 0;
+
+  for (PointListIteratorType iter1 = projectedPoints->Begin(); iter1 != projectedPoints->End(); ++iter1)
+    {
+    PointListIteratorType iter2 = iter1;
+    for (++iter2; iter2 != projectedPoints->End(); ++iter2)
+      {
+      PointListIteratorType iter3 = iter2;
+      for (++iter3; iter3 != projectedPoints->End(); ++iter3)
+        {
+        VectorType p1 = iter1.GetMeasurementVector();
+        VectorType p2 = iter2.GetMeasurementVector();
+        VectorType p3 = iter3.GetMeasurementVector();
+        VectorType c;
+
+        nPoints ++;
+        if (CalcIntersectionOfPerpendicularBisectors2D(p1, p2, p3, c, radius) > 0)
+          {
+          meanIntersect = meanIntersect + c;
+          nPointsUsed ++;
+          }
+        }
+      }
+    }
+  meanIntersect = meanIntersect / nPointsUsed;
+
+  center = meanIntersect[0] * nx + meanIntersect[1] * ny + meanIntersect[2] * nz + meanPoint;
+
+  std::cout << "Number of estimated center points: " << nPoints << std::endl;
+  std::cout << "Number of estimated center points used: " << nPointsUsed << std::endl;
+  std::cout << "Center = " << center << std::endl;  
+  std::cout << std::endl;
+
+}
+
+
 //--------------------------------------------------------------------------------
 // First step consists of calculating a first estimation of the angle by matching
 // a selected point from one set to all points of the other set and calculate
@@ -358,10 +389,6 @@ double FindRotationAngle(MatrixType originalToPlaneMatrix,
 			 VectorType principalVector, VectorType center,
 			 double tuningStep, double tuningRange,
 			 double& minAvgMinSqDist)
-//double FindRotationAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
-//			 VectorType principalVector, VectorType center,
-//			 double tuningStep, double tuningRange,
-//			 double& minAvgMinSqDist)
 {
 
   //----------------------------------------
