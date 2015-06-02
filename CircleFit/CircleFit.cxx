@@ -41,7 +41,13 @@ typedef itk::SymmetricEigenAnalysis< CovarianceAlgorithmType::MatrixType, ArrayT
 
 int    CalcIntersectionOfPerpendicularBisectors2D(VectorType& p1, VectorType& p2, VectorType& p3, VectorType& intersec, double radius);
 
-double FindRotationAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
+//double FindRotationAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
+//			 VectorType principalVector, VectorType center,
+//			 double tuningStep, double tuningRange,
+//			 double& minAvgMinSqDist);
+double FindRotationAngle(MatrixType originalToPlaneMatrix,
+                         PointListType::Pointer srcPoints,
+                         PointListType::Pointer dstPoints,
 			 VectorType principalVector, VectorType center,
 			 double tuningStep, double tuningRange,
 			 double& minAvgMinSqDist);
@@ -201,49 +207,33 @@ int main( int argc, char * argv[] )
     originalToPlaneMatrix[i][2] = nz[i];
     }
     
-  //----------------------------------------
-  // Rotate points from original position to in-plane position
-  
-  PointListType::Pointer inPlanePoints = PointListType::New();
-  for (PointListIteratorType iter = srcPoints->Begin(); iter != srcPoints->End(); ++iter)
-    {
-    VectorType pp = originalToPlaneMatrix*iter.GetMeasurementVector() + center;
-    inPlanePoints->PushBack(pp);
-    }
-
-  //----------------------------------------
-  // Rotate point around principal vector and compute average minimum squiare distance
-
   double minAvgMinSqDist = -1.0;
-  double bestAngle = FindRotationAngle(inPlanePoints, dstPoints,
-				       principalVector, center,
+  double bestAngle = FindRotationAngle(originalToPlaneMatrix,
+                                       srcPoints,
+                                       dstPoints,
+                                       principalVector,
+                                       center,
                                        M_PI*0.1/180.0, M_PI*2.0/180.0,
-				       minAvgMinSqDist);
+                                       minAvgMinSqDist);
 
   //----------------------------------------
-  // Rotate circle around one of the other axis, nx or ny, and recalculate average minimum squiare distance
-  // to also find the global minimum (including symmetry)
+  // Flip the fitted plane (about ny) and calculate the best rotation angle
 
-  TransformType::Pointer flippingTransform = TransformType::New();
-  flippingTransform->SetCenter(center);
-  flippingTransform->Rotate3D(nx, M_PI);
-
-  PointListType::Pointer flippedInPlanePoints = PointListType::New();
-  for (PointListIteratorType iter = inPlanePoints->Begin(); iter != inPlanePoints->End(); ++iter)
+  for (int i = 0; i < 3; ++i)
     {
-    PointType pp = flippingTransform->TransformPoint(iter.GetMeasurementVector());
-    VectorType vp;
-    vp[0] = pp[0];
-    vp[1] = pp[1];
-    vp[2] = pp[2];
-    flippedInPlanePoints->PushBack(vp);
+    originalToPlaneMatrix[i][0] = -nx[i];
+    originalToPlaneMatrix[i][1] = ny[i];
+    originalToPlaneMatrix[i][2] = -nz[i];
     }
 
   double flippedMinAvgMinSqDist = -1.0;
-  double flippedBestAngle = FindRotationAngle(flippedInPlanePoints, dstPoints,
-					      principalVector, center,
-					      M_PI*0.1/180.0, M_PI*2.0/180.0,
-					      flippedMinAvgMinSqDist);
+  double flippedBestAngle = FindRotationAngle(originalToPlaneMatrix,
+                                              srcPoints,
+                                              dstPoints,
+                                              principalVector,
+                                              center,
+                                              M_PI*0.1/180.0, M_PI*2.0/180.0,
+                                              flippedMinAvgMinSqDist);
 
   //----------------------------------------
   // Build registration transform
@@ -362,11 +352,31 @@ int CalcIntersectionOfPerpendicularBisectors2D(VectorType& p1, VectorType& p2, V
 // a fine step (0.1 degree).
 // Return best fitting angle (in degrees) between 2 pointsets.
 
-double FindRotationAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
+double FindRotationAngle(MatrixType originalToPlaneMatrix,
+                         PointListType::Pointer srcPoints,
+                         PointListType::Pointer dstPoints,
 			 VectorType principalVector, VectorType center,
 			 double tuningStep, double tuningRange,
 			 double& minAvgMinSqDist)
+//double FindRotationAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
+//			 VectorType principalVector, VectorType center,
+//			 double tuningStep, double tuningRange,
+//			 double& minAvgMinSqDist)
 {
+
+  //----------------------------------------
+  // Rotate points from original position to in-plane position
+  
+  PointListType::Pointer inPlanePoints = PointListType::New();
+  for (PointListIteratorType iter = srcPoints->Begin(); iter != srcPoints->End(); ++iter)
+    {
+      VectorType pp = originalToPlaneMatrix*iter.GetMeasurementVector() + center;
+      inPlanePoints->PushBack(pp);
+    }
+  
+  //----------------------------------------
+  // Rotate point around principal vector and compute average minimum squiare distance
+
   double estimatedAngle = FindEstimatedAngle(inPlanePoints, dstPoints,
 					     principalVector, center);
   double fineTunedAngle = FineTuneAngle(inPlanePoints, dstPoints,
