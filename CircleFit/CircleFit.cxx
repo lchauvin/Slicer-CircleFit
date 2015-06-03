@@ -42,20 +42,26 @@ typedef itk::SymmetricEigenAnalysis< CovarianceAlgorithmType::MatrixType, ArrayT
 int    CalcIntersectionOfPerpendicularBisectors2D(VectorType& p1, VectorType& p2, VectorType& p3, VectorType& intersec, double radius);
 
 void   FindCircleFromPoints(PointListType::Pointer srcPoints, MatrixType& srcTransformMatrix, VectorType& srcCenter, double& radius);
-void   EstimateCenter(PointListType::Pointer points, MatrixType& originalToPlaneMatrix, VectorType& center, double radius);
+void   FindCenter(PointListType::Pointer points, MatrixType& originalToPlaneMatrix, VectorType& center, double radius);
+double FindTransformByRotation(MatrixType& originalToPlaneMatrix, PointListType::Pointer srcPoints, PointListType::Pointer dstPoints,
+                               VectorType axisVector, VectorType center, double tuningStep, double tuningRange, double minAvgMinSqDist);
+
+
 double FindRotationAngle(MatrixType& originalToPlaneMatrix,
                          PointListType::Pointer srcPoints,
                          PointListType::Pointer dstPoints,
 			 VectorType principalVector, VectorType center,
 			 double tuningStep, double tuningRange,
 			 double& minAvgMinSqDist);
-double FindEstimatedAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
+double EstimateRotationAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
 			  VectorType principalVector, VectorType center);
 double AngleBetweenPoints(VectorType p1, VectorType p2, VectorType origin, VectorType principalVector);
+void TransformPoints(PointListType::Pointer inputPoints, PointListType::Pointer outputPoints,
+                     TransformType::Pointer transform);
 void   RotatePoints(PointListType::Pointer inputPoints,
                     VectorType principalVector, VectorType center, double angle,
                     PointListType::Pointer outputPoints);
-double FineTuneAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
+double FineTuneRotationAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
 		     VectorType principalVector, VectorType center, double estimatedAngle,
 		     double tuningStep,  double tuningRange,
 		     double& minAvgMinSqDist);
@@ -70,9 +76,8 @@ int main( int argc, char * argv[] )
   
   //----------------------------------------
   // Convert points into PointListType
-  PointListType::Pointer srcPoints, dstPoints;
-  srcPoints = PointListType::New();
-  dstPoints = PointListType::New();
+  PointListType::Pointer srcPoints = PointListType::New();
+  PointListType::Pointer dstPoints = PointListType::New();
 
   size_t numberOfMovingPoints = movingPoints.size();
   for (size_t mp = 0; mp < numberOfMovingPoints; ++mp)
@@ -101,8 +106,18 @@ int main( int argc, char * argv[] )
   double srcRadius;
   FindCircleFromPoints(srcPoints, srcTransformMatrix, srcCenter, srcRadius);
 
-  std::cerr << "srcTransformMatrix = " << srcTransformMatrix << std::endl;
-  std::cerr << "srcRadius = " << srcRadius << std::endl;
+  std::cout << "srcTransformMatrix = " << srcTransformMatrix << std::endl;
+  std::cout << "srcRadius = " << srcRadius << std::endl;
+
+  //----------------------------------------
+  // Transform the model to the origin / X-Y plane
+  PointListType::Pointer transSrcPoints = PointListType::New();
+
+  for (PointListIteratorType iter = srcPoints->Begin(); iter != srcPoints->End(); ++iter)
+    {
+    VectorType p = iter.GetMeasurementVector() - srcCenter;
+    transSrcPoints->PushBack(srcTransformMatrix * p);
+    }
 
   //----------------------------------------
   // Perform PCA
@@ -130,32 +145,29 @@ int main( int argc, char * argv[] )
   VectorType ny =  eigenMatrix[2];
   VectorType nz =  itk::CrossProduct(nx, ny);
 
-  VectorType z = itk::CrossProduct(nx, ny);
-  std::cerr << "nx x ny = " << z << std::endl;
-  std::cerr << "     nz = " << nz << std::endl;
-
   //----------------------------------------
   // Calculate matrix from original coordinate system to plane coordinate system
 
   MatrixType originalToPlaneMatrix;
   for (int i = 0; i < 3; ++i)
-    {
+    { 
     originalToPlaneMatrix[i][0] = nx[i];
     originalToPlaneMatrix[i][1] = ny[i];
     originalToPlaneMatrix[i][2] = nz[i];
     }
-  VectorType principalVector = nz;
+  VectorType axisVector = nz;
     
   // Estimate the center
   VectorType center;
-  EstimateCenter(dstPoints, originalToPlaneMatrix, center, srcRadius);
-  std::cerr << "originalToPlaneMatrix = " << originalToPlaneMatrix << std::endl;
+  FindCenter(dstPoints, originalToPlaneMatrix, center, srcRadius);
+  std::cout << "originalToPlaneMatrix = " << originalToPlaneMatrix << std::endl;
+
 
   double minAvgMinSqDist = -1.0;
   double bestAngle = FindRotationAngle(originalToPlaneMatrix,
-                                       srcPoints,
+                                       transSrcPoints,
                                        dstPoints,
-                                       principalVector,
+                                       axisVector,
                                        center,
                                        M_PI*0.1/180.0, M_PI*2.0/180.0,
                                        minAvgMinSqDist);
@@ -169,14 +181,14 @@ int main( int argc, char * argv[] )
     flippedOriginalToPlaneMatrix[i][1] = ny[i];
     flippedOriginalToPlaneMatrix[i][2] = -nz[i];
     }
-  VectorType flippedPrincipalVector = -nz;
+  VectorType flippedAxisVector = -nz;
 
   // No need to estimate the center because it remains at the same point when the plane is flipped
   double flippedMinAvgMinSqDist = -1.0;
   double flippedBestAngle = FindRotationAngle(flippedOriginalToPlaneMatrix,
                                               srcPoints,
                                               dstPoints,
-                                              flippedPrincipalVector,
+                                              flippedAxisVector,
                                               center,
                                               M_PI*0.1/180.0, M_PI*2.0/180.0,
                                               flippedMinAvgMinSqDist);
@@ -184,24 +196,31 @@ int main( int argc, char * argv[] )
   //----------------------------------------
   // Build registration transform
   
-  TransformType::Pointer registrationTransform = TransformType::New();
-  registrationTransform->SetIdentity();
-
-  std::cout << "Fitting Angle: ";
+  TransformType::Pointer originalToPlaneTransform = TransformType::New();
   if (minAvgMinSqDist < flippedMinAvgMinSqDist)
     {
-    registrationTransform->SetMatrix(originalToPlaneMatrix);
-    registrationTransform->Rotate3D(principalVector, bestAngle);
-    std::cout << bestAngle << std::endl;
+    originalToPlaneTransform->SetMatrix(originalToPlaneMatrix);
     }
   else
     {
-    registrationTransform->SetMatrix(flippedOriginalToPlaneMatrix);
-    registrationTransform->Rotate3D(flippedPrincipalVector, flippedBestAngle);
-    std::cout << flippedBestAngle << " (flipped)" << std::endl;
+    originalToPlaneTransform->SetMatrix(flippedOriginalToPlaneMatrix);
+    }
+  originalToPlaneTransform->SetOffset(center);
+
+  TransformType::Pointer registrationTransform = TransformType::New();
+  registrationTransform->SetCenter(center);
+
+  if (minAvgMinSqDist < flippedMinAvgMinSqDist)
+    {
+    registrationTransform->Rotate3D(axisVector, bestAngle);
+    }
+  else
+    {
+    registrationTransform->Rotate3D(flippedAxisVector, flippedBestAngle);
     }
 
-  registrationTransform->SetOffset(center);
+  registrationTransform->Compose(originalToPlaneTransform, true);
+
 
   TransformWriterType::Pointer registrationTransformWriter = TransformWriterType::New();
   registrationTransformWriter->SetInput(registrationTransform->GetInverseTransform());
@@ -291,10 +310,11 @@ int CalcIntersectionOfPerpendicularBisectors2D(VectorType& p1, VectorType& p2, V
 }
 
 
-
 //--------------------------------------------------------------------------------
-// Estimate the center of the circle from the points on the arc
-void EstimateCenter(PointListType::Pointer points, MatrixType& originalToPlaneMatrix, VectorType& center, double radius=0)
+// Estimate the center of the circle from the points on the arc.
+// If 'radius' is given, the function will validate the center by comparing
+// the distance between the center and each point and the given radius.
+void FindCenter(PointListType::Pointer points, MatrixType& originalToPlaneMatrix, VectorType& center, double radius=0)
 {
 
   //----------------------------------------
@@ -415,7 +435,7 @@ void FindCircleFromPoints(PointListType::Pointer srcPoints, MatrixType& srcTrans
     srcTransformMatrix[i][2] = srcNormal[i];
     }
   
-  EstimateCenter(srcPoints, srcTransformMatrix, srcCenter);
+  FindCenter(srcPoints, srcTransformMatrix, srcCenter);
 
   double sumRadius = 0.0;
   for (PointListIteratorType iter = srcPoints->Begin(); iter != srcPoints->End(); ++iter)
@@ -441,7 +461,7 @@ void FindCircleFromPoints(PointListType::Pointer srcPoints, MatrixType& srcTrans
 double FindRotationAngle(MatrixType& originalToPlaneMatrix,
                          PointListType::Pointer srcPoints,
                          PointListType::Pointer dstPoints,
-			 VectorType principalVector, VectorType center,
+			 VectorType axisVector, VectorType center,
 			 double tuningStep, double tuningRange,
 			 double& minAvgMinSqDist)
 {
@@ -457,15 +477,66 @@ double FindRotationAngle(MatrixType& originalToPlaneMatrix,
     }
   
   //----------------------------------------
-  // Rotate point around principal vector and compute average minimum squiare distance
+  // Rotate point around axis vector and compute average minimum squiare distance
 
-  double estimatedAngle = FindEstimatedAngle(inPlanePoints, dstPoints,
-					     principalVector, center);
-  double fineTunedAngle = FineTuneAngle(inPlanePoints, dstPoints,
-					principalVector, center, estimatedAngle,
+  double estimatedAngle = EstimateRotationAngle(inPlanePoints, dstPoints,
+					     axisVector, center);
+  double fineTunedAngle = FineTuneRotationAngle(inPlanePoints, dstPoints,
+					axisVector, center, estimatedAngle,
 					tuningStep, tuningRange, minAvgMinSqDist);
   return fineTunedAngle;
 }
+
+
+double EstimateTransformByRotation(MatrixType& originalToPlaneMatrix,
+                             PointListType::Pointer srcPoints,
+                             PointListType::Pointer dstPoints,
+                             VectorType axisVector,
+                             VectorType center,
+                             double tuningStep,
+                             double tuningRange,
+                             TransformType::Pointer estimatedTransform)
+{
+  double minAvgMinSqDist;
+
+  TransformType::Pointer originalToPlaneTransform = TransformType::New();
+  originalToPlaneTransform->SetMatrix(originalToPlaneMatrix);
+  originalToPlaneTransform->SetOffset(center);
+
+  ////----------------------------------------
+  //// Rotate points from original position to in-plane position
+  //PointListType::Pointer inPlanePoints = PointListType::New();
+  //for (PointListIteratorType iter = srcPoints->Begin(); iter != srcPoints->End(); ++iter)
+  //  {
+  //    VectorType pp = originalToPlaneMatrix*iter.GetMeasurementVector() + center;
+  //    inPlanePoints->PushBack(pp);
+  //  }
+  PointListType::Pointer inPlanePoints = PointListType::New();
+  TransformPoints(srcPoints, inPlanePoints, originalToPlaneTransform);
+  
+  //----------------------------------------
+  // Rotate point around axis vector and compute average minimum squiare distance
+
+  double estimatedAngle = EstimateRotationAngle(inPlanePoints, dstPoints,
+                                                axisVector, center);
+  double fineTunedAngle = FineTuneRotationAngle(inPlanePoints, dstPoints,
+                                                axisVector, center, estimatedAngle,
+                                                tuningStep, tuningRange, minAvgMinSqDist);
+
+  TransformType::Pointer rotationTransform = TransformType::New();
+  rotationTransform->SetCenter(center);
+  rotationTransform->Rotate3D(axisVector, fineTunedAngle);
+  
+  estimatedTransform->SetMatrix(originalToPlaneMatrix);
+  estimatedTransform->SetOffset(center);
+  estimatedTransform->Compose(rotationTransform);
+
+  return minAvgMinSqDist;
+}
+
+
+
+
 
 //--------------------------------------------------------------------------------
 // Estimate best fitting angle by computing angle between 2 given points (and center),
@@ -473,8 +544,8 @@ double FindRotationAngle(MatrixType& originalToPlaneMatrix,
 // Process is repeated for all 3-points combination.
 // Return estimated angle (in degrees) between 2 pointsets.
 
-double FindEstimatedAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
-			  VectorType principalVector, VectorType center)
+double EstimateRotationAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
+			  VectorType axisVector, VectorType center)
 {
   double estimatedAngle = -1.0;
   double minAverageMinSqDist = -1.0;
@@ -487,9 +558,9 @@ double FindEstimatedAngle(PointListType::Pointer inPlanePoints, PointListType::P
     {
     rotatedPoints->Clear();
 
-    double currentAngle = AngleBetweenPoints(selectedPoint, iter.GetMeasurementVector(), center, principalVector);
+    double currentAngle = AngleBetweenPoints(selectedPoint, iter.GetMeasurementVector(), center, axisVector);
     RotatePoints(inPlanePoints,
-		 principalVector, center, currentAngle,
+		 axisVector, center, currentAngle,
 		 rotatedPoints);
     double averageMinSqDist = AverageMinimumSquareDistance(rotatedPoints, dstPoints);
 
@@ -506,7 +577,7 @@ double FindEstimatedAngle(PointListType::Pointer inPlanePoints, PointListType::P
 //--------------------------------------------------------------------------------
 // Return the angle (in degrees) between 3 points.
 
-double AngleBetweenPoints(VectorType p1, VectorType p2, VectorType origin, VectorType principalVector)
+double AngleBetweenPoints(VectorType p1, VectorType p2, VectorType origin, VectorType axisVector)
 {
   // Calculate the angle between v1 and v2
   VectorType v1 = p1 - origin;
@@ -518,35 +589,50 @@ double AngleBetweenPoints(VectorType p1, VectorType p2, VectorType origin, Vecto
   double theta = std::acos( dotProduct / (v1Norm*v2Norm) );
 
   VectorType rotAxis = itk::CrossProduct(v1, v2);
-  double rotAxisDotProduct = rotAxis * principalVector;
+  double rotAxisDotProduct = rotAxis * axisVector;
   double sign = (rotAxisDotProduct > 0.0) ? 1.0: -1.0;
   
   return sign * theta;
 }
 
+
 //--------------------------------------------------------------------------------
-// Rotate a pointset around the principal vector by a given angle, with the circle 
+// Trnasform all points in the list
+
+void TransformPoints(PointListType::Pointer inputPoints, PointListType::Pointer outputPoints,
+                     TransformType::Pointer transform)
+{
+
+  outputPoints->Clear();
+
+  for (PointListIteratorType iter = inputPoints->Begin(); iter != inputPoints->End(); ++iter)
+    {
+    PointType rp = transform->TransformPoint(iter.GetMeasurementVector());
+    outputPoints->PushBack(rp.GetVectorFromOrigin());
+    }
+}
+
+
+//--------------------------------------------------------------------------------
+// Rotate a pointset around the axis vector by a given angle, with the circle 
 // center as rotation center and output new rotated pointset
 
 void RotatePoints(PointListType::Pointer inputPoints,
-		  VectorType principalVector, VectorType center, double angle,
+		  VectorType axisVector, VectorType center, double angle,
 		  PointListType::Pointer outputPoints)
 {
   outputPoints->Clear();
 
   TransformType::Pointer rotationTransform = TransformType::New();
   rotationTransform->SetCenter(center);
-  rotationTransform->Rotate3D(principalVector, angle);
+  rotationTransform->Rotate3D(axisVector, angle);
 
-  for (PointListIteratorType iter = inputPoints->Begin(); iter != inputPoints->End(); ++iter)
-    {
-    PointType rp = rotationTransform->TransformPoint(iter.GetMeasurementVector());
-    VectorType rotatedPoint;
-    rotatedPoint[0] = rp[0];
-    rotatedPoint[1] = rp[1];
-    rotatedPoint[2] = rp[2];
-    outputPoints->PushBack(rotatedPoint);
-    }
+  //for (PointListIteratorType iter = inputPoints->Begin(); iter != inputPoints->End(); ++iter)
+  //  {
+  //  PointType rp = rotationTransform->TransformPoint(iter.GetMeasurementVector());
+  //  outputPoints->PushBack(rp->GetVectorFromOrigin());
+  //  }
+  TransformPoints(inputPoints, outputPoints, rotationTransform);
 }
 
 
@@ -586,15 +672,15 @@ double AverageMinimumSquareDistance(PointListType::Pointer set1, PointListType::
 }
 
 //--------------------------------------------------------------------------------
-// Rotate pointset around principal vector, with the circle center as rotation center,
+// Rotate pointset around axis vector, with the circle center as rotation center,
 // by 'estimatedAngle +/- 2' degrees with a fine angle step (0.1 degree), and calculate
 // average minimum square distance for each. Keep the angle with the minimum average
 // minimum square distance. Return fine tuned angle between both pointsets.
 
-double FineTuneAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
-		     VectorType principalVector, VectorType center, double estimatedAngle,
-		     double tuningStep,  double tuningRange,
-		     double& minAvgMinSqDist)
+double FineTuneRotationAngle(PointListType::Pointer inPlanePoints, PointListType::Pointer dstPoints,
+                             VectorType axisVector, VectorType center, double estimatedAngle,
+                             double tuningStep,  double tuningRange,
+                             double& minAvgMinSqDist)
 {
   double fineTunedAngle = -1.0;
   PointListType::Pointer rotatedPoints = PointListType::New();
@@ -606,7 +692,7 @@ double FineTuneAngle(PointListType::Pointer inPlanePoints, PointListType::Pointe
     rotatedPoints->Clear();
 
     RotatePoints(inPlanePoints,
-		 principalVector, center, angle,
+		 axisVector, center, angle,
 		 rotatedPoints);
     double averageMinSqDist = AverageMinimumSquareDistance(rotatedPoints, dstPoints);
 
