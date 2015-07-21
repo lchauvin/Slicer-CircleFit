@@ -27,15 +27,6 @@
       <default>0,0,0</default>
       <channel>input</channel>
     </point>
-    <double>
-      <name>radius</name>
-      <longflag>radius</longflag>
-      <flag>r</flag>
-      <label>Radius</label>
-      <description><![CDATA[Radius of the fitting circle in mm]]></description>
-      <default>50.0</default>
-      <channel>input</channel>
-    </double>
     <transform type="linear" fileExtensions=".txt">
       <name>registration</name>
       <label>Registration Transform</label>
@@ -43,5 +34,13 @@
       <description><![CDATA[Output registration transform.]]></description>
       <channel>output</channel>
     </transform>
+    <point multiple="true" coordinateSystem="lps">
+      <name>sortedFixedPoints</name>
+      <label>sorted</label>
+      <longflag>--sorted</longflag>
+      <description><![CDATA[Sorted fixed points. Result of matching with the moving points.]]></description>
+      <default>0,0,0</default>
+      <channel>output</channel>
+    </point>
   </parameters>
 </executable>
