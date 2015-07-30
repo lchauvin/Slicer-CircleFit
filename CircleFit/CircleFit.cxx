@@ -24,7 +24,6 @@
 #include "itkPluginUtilities.h"
 #include "CircleFitCLP.h"
 
-
 typedef itk::Vector< double, 3 > VectorType;
 typedef itk::Point< double, 3 > PointType;
 typedef itk::Matrix< double, 3, 3 > MatrixType;
@@ -46,6 +45,8 @@ void   FindCircleFromPoints(PointListType& movingPointList, TransformType::Point
 void   FindCenter(PointListType& points, MatrixType& originalToPlaneMatrix, VectorType& center, double radius);
 
 int    FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMatrix, VectorType& center, double radius);
+
+int   RemoveBiggestOutlierFromList(PointListType& pointList, int outlyingScores[], unsigned int size);
 
 double FindRotationAngle(MatrixType& originalToPlaneMatrix,
                          PointListType& movingPointList,
@@ -446,30 +447,11 @@ void FindCenter(PointListType& points, MatrixType& rotationMatrix, VectorType& c
 }
 
 //----------------------------------------
-// First pass:
-// For each point, calculate vector to all other points, and project
-// them on the perpendicular vector of the plane (nz).
-// All projections are averaged for this point and if distance is greater
-// than threshold, points is considered out of plane, and outlier.
-// Point is then removed, and function returns 1.
-//
-// Second Pass:
-// For each 3-point subset, the bisection intersection point (intersection) is calculated.
-// Then, we compute distances from 'intersection' to all other points. If this distance
-// is different from the circle radius (+/- 20% margin), then this point's outlying score is
-// incremented.
-// When all combinations of 3-point subset have been tested, the point with the higher score is removed.
-// If there is no outlier, all scores will be 0, and no point will be removed.
-//
 // Return 1 if outlier found and removed, 0 otherwise.
 
 int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMatrix, VectorType& center, double radius)
 {
-
-  //----------------------------------------
-  // First Pass
-
-  // Project all the points to the fitted plane.
+  // Get plane vectors
   VectorType nx;
   VectorType ny;
   VectorType nz;
@@ -481,6 +463,7 @@ int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMat
     nz[i] = rotationMatrix[i][2];
     }
 
+  // Project points on the estimated plane
   PointListType projectedPoints;
   for (size_t i = 0; i < fixedPointList.size(); ++i)
     {
@@ -491,40 +474,112 @@ int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMat
     p2[1] = p1*ny;
     p2[2] = 0.0;
 
-    // Calculate projected vector on plane's perpendicular vector
-    /*
-      Issue:
-      If PCA has been run with outliers in the pointset, plane might not be accurate
-      and valid points could be considered as outliers in the first pass because of the
-      inaccuracy of the plane.
-
-    double outOfPlaneThreshold = 10.0;
-    if (std::fabs(p1*nz) > outOfPlaneThreshold)
-      {
-      std::cerr << "Point " << i << " out of the plane. Removing it." <<  std::endl;
-      fixedPointList.erase(fixedPointList.begin() + i);
-      return 1;
-      }
-    else
-      {
-      projectedPoints.push_back(p2);
-      }
-    */
     projectedPoints.push_back(p2);
     }
 
-  //----------------------------------------
-  // Second Pass
-
+  // Define margin error, based on circle radius
   double radiusMargin = .2;
   double radiusMax = radius*(1+radiusMargin);
   double radiusMin = radius*(1-radiusMargin);
+  double outOfPlaneMargin = 1.0;
+
+  //----------------------------------------
+  // First Pass
+  // Find and remove points further than the radius from the estimated center
+
+  std::cout << "----------------------------------------" << std::endl
+	    << "Outlier Detection: 1st Pass" << std::endl
+	    << "Find and remove points further than the radius from the estimated center" << std::endl
+	    << std::endl;
+
+  int scoreFirstPass[fixedPointList.size()];
+  for (size_t i = 0; i < fixedPointList.size(); ++i)
+    {
+    scoreFirstPass[i] = 0;
+    }
+
+  for (size_t i = 0; i < fixedPointList.size(); ++i)
+    {
+    double distanceToEstimatedCenter = (fixedPointList[i] - center).GetNorm();
+    if ( distanceToEstimatedCenter > radiusMax )
+      {
+      scoreFirstPass[i] += (int)distanceToEstimatedCenter;
+      }
+    }
+
+  std::cout << "First Pass Results: " << std::endl;
+  if ( RemoveBiggestOutlierFromList(fixedPointList, scoreFirstPass, fixedPointList.size()) )
+    {
+    std::cout << "[First Pass]: Outlier found and removed." << std::endl;
+    return 1;
+    }
+  std::cout << "[First Pass]: No outlier found. Moving to second pass." << std::endl << std::endl;
+
+  //----------------------------------------
+  // Second Pass
+  // Find and remove points out of the estimated plane
+
+  std::cout << "----------------------------------------" << std::endl
+	    << "Outlier Detection: 2nd Pass" << std::endl
+	    << "Find and remove points out of the estimated plane" << std::endl
+	    << std::endl;
+
+  int scoreSecondPass[fixedPointList.size()];
+  for (size_t i = 0; i < fixedPointList.size(); ++i)
+    {
+    scoreSecondPass[i] = 0;
+    }
+
+  // Calculate distance from original points to projected points.
+  // If original point is in the estimated plan, distance should be close to 0.
+  // Score points with the rounded value of their distance to their projection
+  // on the estimated plane.
+  for (size_t i = 0; i < fixedPointList.size(); ++i)
+    {
+    // Get projected points in x,y,z coordinate system
+    VectorType unprojected;
+    unprojected = fixedPointList[i] - center;
+
+    VectorType projected;
+    projected[0] = projectedPoints[i][0]*nx[0] + projectedPoints[i][1]*ny[0];
+    projected[1] = projectedPoints[i][0]*nx[1] + projectedPoints[i][1]*ny[1];
+    projected[2] = projectedPoints[i][0]*nx[2] + projectedPoints[i][1]*ny[2];
+
+    double distance = (int)(unprojected - projected).GetNorm();
+
+    // Do not increase point score if distance is less than a millimeter off the plane
+    // because fiducial detection could have some variability.
+    // If detected point has some error in nz direction, it could be considered as outlier
+    // if all other points are in the plane, which is untrue. Allowing a margin error
+    // allow us to overcome this issue.
+    if ( distance > outOfPlaneMargin )
+      {
+      scoreSecondPass[i] += (int)distance;
+      }
+    }
+
+  std::cout << "Second Pass Results: " << std::endl;
+  if ( RemoveBiggestOutlierFromList(fixedPointList, scoreSecondPass, fixedPointList.size()) )
+    {
+    std::cout << "[Second Pass]: Outlier found and removed." << std::endl;
+    return 1;
+    }
+  std::cout << "[Second Pass]: No outlier found. Moving to third pass." << std::endl << std::endl;
+
+  //----------------------------------------
+  // Third Pass
+  // Find and remove points not fitting the circle
+
+  std::cout << "----------------------------------------" << std::endl
+	    << "Outlier Detection: 3rd Pass" << std::endl
+	    << "Find and remove points not fitting the circle" << std::endl
+	    << std::endl;
 
   // Calculate points' outlying score
-  int pointScores[projectedPoints.size()];
+  int scoreThirdPass[projectedPoints.size()];
   for (size_t i = 0; i < projectedPoints.size(); ++i)
     {
-    pointScores[i] = 0;
+    scoreThirdPass[i] = 0;
     }
 
   for (size_t i = 0; i < projectedPoints.size(); ++i)
@@ -560,7 +615,7 @@ int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMat
 	    if (distanceFromIntersection > radiusMax ||
 		distanceFromIntersection < radiusMin)
 	      {
-	      pointScores[l]++;
+	      scoreThirdPass[l]++;
 	      }
 	    }
 	  }
@@ -568,33 +623,49 @@ int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMat
       }
     }
 
+  std::cout << "Third Pass Results: " << std::endl;
+  if ( RemoveBiggestOutlierFromList(fixedPointList, scoreThirdPass, projectedPoints.size()) )
+    {
+    std::cout << "[Third Pass]: Outlier found and removed." << std::endl;
+    return 1;
+    }
+  std::cout << "[Third Pass]: No outlier found. Moving to third pass." << std::endl << std::endl;
+
+  return 0;
+}
+
+//----------------------------------------
+// Find biggest outlier from the list and remove it
+// Return 1 if outlier has been removed, 0 otherwise
+
+int RemoveBiggestOutlierFromList(PointListType& pointList, int outlyingScores[], unsigned int size)
+{
+  if (pointList.size() != size)
+    {
+    return 0;
+    }
+
   // Find index of the higher outlying score
   size_t higherIndex = 0;
-  for (size_t i = 0; i < projectedPoints.size(); ++i)
+  for (size_t i = 0; i < size; ++i)
     {
-    std::cout << "Score[" << i << "]: " << pointScores[i] << std::endl;
-    if (pointScores[i] > pointScores[higherIndex])
+    std::cout << "Score[" << i << "]: " << outlyingScores[i] << std::endl;
+    if (outlyingScores[i] > outlyingScores[higherIndex])
       {
       higherIndex = i;
       }
     }
 
+  // TODO: What if scores are equal ?
   // Remove it from the point list
-  if (higherIndex < fixedPointList.size())
+  if (higherIndex < pointList.size())
     {
-    if (pointScores[higherIndex] > 0)
+    if (outlyingScores[higherIndex] > 0)
       {
       // Outlier found. Remove it and return 1.
-      PointListType::iterator iter = fixedPointList.begin() + higherIndex;
-      fixedPointList.erase(iter);
-      std::cout << "[Second Pass]: Outlier Found and Removed." << std::endl << std::endl;
+      PointListType::iterator iter = pointList.begin() + higherIndex;
+      pointList.erase(iter);
       return 1;
-      }
-    else
-      {
-      // No outlier found. Return 0.
-      std::cout << "[Second Pass]: No Outlier Found." << std::endl << std::endl;
-      return 0;
       }
     }
 
