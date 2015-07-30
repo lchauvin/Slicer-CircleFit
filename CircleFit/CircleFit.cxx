@@ -46,7 +46,7 @@ void   FindCenter(PointListType& points, MatrixType& originalToPlaneMatrix, Vect
 
 int    FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMatrix, VectorType& center, double radius);
 
-int   RemoveBiggestOutlierFromList(PointListType& pointList, int outlyingScores[], unsigned int size);
+int   RemoveBiggestOutlierFromList(PointListType& pointList, double outlyingScores[], unsigned int size);
 
 double FindRotationAngle(MatrixType& originalToPlaneMatrix,
                          PointListType& movingPointList,
@@ -478,10 +478,10 @@ int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMat
     }
 
   // Define margin error, based on circle radius
+  double outOfPlaneMargin = 2.0;
   double radiusMargin = .2;
   double radiusMax = radius*(1+radiusMargin);
   double radiusMin = radius*(1-radiusMargin);
-  double outOfPlaneMargin = 1.0;
 
   //----------------------------------------
   // First Pass
@@ -492,18 +492,19 @@ int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMat
 	    << "Find and remove points further than the radius from the estimated center" << std::endl
 	    << std::endl;
 
-  int scoreFirstPass[fixedPointList.size()];
+  double scoreFirstPass[fixedPointList.size()];
   for (size_t i = 0; i < fixedPointList.size(); ++i)
     {
-    scoreFirstPass[i] = 0;
+    scoreFirstPass[i] = 0.0;
     }
 
+  // TODO: Should we use Norm or SquaredNorm to score points ?
   for (size_t i = 0; i < fixedPointList.size(); ++i)
     {
     double distanceToEstimatedCenter = (fixedPointList[i] - center).GetNorm();
     if ( distanceToEstimatedCenter > radiusMax )
       {
-      scoreFirstPass[i] += (int)distanceToEstimatedCenter;
+      scoreFirstPass[i] += distanceToEstimatedCenter;
       }
     }
 
@@ -524,10 +525,10 @@ int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMat
 	    << "Find and remove points out of the estimated plane" << std::endl
 	    << std::endl;
 
-  int scoreSecondPass[fixedPointList.size()];
+  double scoreSecondPass[fixedPointList.size()];
   for (size_t i = 0; i < fixedPointList.size(); ++i)
     {
-    scoreSecondPass[i] = 0;
+    scoreSecondPass[i] = 0.0;
     }
 
   // Calculate distance from original points to projected points.
@@ -545,16 +546,17 @@ int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMat
     projected[1] = projectedPoints[i][0]*nx[1] + projectedPoints[i][1]*ny[1];
     projected[2] = projectedPoints[i][0]*nx[2] + projectedPoints[i][1]*ny[2];
 
-    double distance = (int)(unprojected - projected).GetNorm();
+    // TODO: Should we use Norm or SquaredNorm to score points ?
+    double distanceToProjection = (unprojected - projected).GetNorm();
 
     // Do not increase point score if distance is less than a millimeter off the plane
     // because fiducial detection could have some variability.
     // If detected point has some error in nz direction, it could be considered as outlier
     // if all other points are in the plane, which is untrue. Allowing a margin error
     // allow us to overcome this issue.
-    if ( distance > outOfPlaneMargin )
+    if ( distanceToProjection > outOfPlaneMargin )
       {
-      scoreSecondPass[i] += (int)distance;
+      scoreSecondPass[i] += distanceToProjection;
       }
     }
 
@@ -576,10 +578,10 @@ int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMat
 	    << std::endl;
 
   // Calculate points' outlying score
-  int scoreThirdPass[projectedPoints.size()];
+  double scoreThirdPass[projectedPoints.size()];
   for (size_t i = 0; i < projectedPoints.size(); ++i)
     {
-    scoreThirdPass[i] = 0;
+    scoreThirdPass[i] = 0.0;
     }
 
   for (size_t i = 0; i < projectedPoints.size(); ++i)
@@ -611,11 +613,11 @@ int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMat
 	  {
 	  if (l != i && l != j && l != k)
 	    {
-	    double distanceFromIntersection = (projectedPoints[l] - intersection).GetNorm();
-	    if (distanceFromIntersection > radiusMax ||
-		distanceFromIntersection < radiusMin)
+	    // TODO: Should we use Norm or SquaredNorm to score points ?
+	    double distanceToIntersection = (projectedPoints[l] - intersection).GetNorm();
+	    if (distanceToIntersection > radiusMax || distanceToIntersection < radiusMin)
 	      {
-	      scoreThirdPass[l]++;
+	      scoreThirdPass[l] += distanceToIntersection;
 	      }
 	    }
 	  }
@@ -635,10 +637,14 @@ int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMat
 }
 
 //----------------------------------------
-// Find biggest outlier from the list and remove it
+// Find biggest outlier from the list and remove it.
+// To overcome some possible equality in the scores when using integers,
+// we score points using doubles.
+// It is much more unlikely to have two double numbers strictly equal,
+// than it is with integers.
 // Return 1 if outlier has been removed, 0 otherwise
 
-int RemoveBiggestOutlierFromList(PointListType& pointList, int outlyingScores[], unsigned int size)
+int RemoveBiggestOutlierFromList(PointListType& pointList, double outlyingScores[], unsigned int size)
 {
   if (pointList.size() != size)
     {
@@ -656,8 +662,6 @@ int RemoveBiggestOutlierFromList(PointListType& pointList, int outlyingScores[],
       }
     }
 
-  // TODO: What if scores are equal ?
-  // Remove it from the point list
   if (higherIndex < pointList.size())
     {
     if (outlyingScores[higherIndex] > 0)
