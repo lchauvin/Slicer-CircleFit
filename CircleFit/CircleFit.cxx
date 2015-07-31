@@ -684,6 +684,11 @@ int RemoveBiggestOutlierFromList(PointListType& pointList, double outlyingScores
 
 void FindCircleFromPoints(PointListType& movingPointList, TransformType::Pointer transform, double& radius)
 {
+  if (movingPointList.size() < 1)
+    {
+    return;
+    }
+
   VectorType v1 = movingPointList[1]-movingPointList[0];
   VectorType v2 = movingPointList[2]-movingPointList[0];
   VectorType srcNormal = itk::CrossProduct(v1, v2);
@@ -756,8 +761,8 @@ double FindRotationAngle(MatrixType& originToPlaneMatrix,
   double estimatedAngle = EstimateRotationAngle(inPlanePoints, fixedPointList,
                                                 axisVector, center);
   double fineTunedAngle = FineTuneRotationAngle(inPlanePoints, fixedPointList,
-					axisVector, center, estimatedAngle,
-					tuningStep, tuningRange, minAvgMinSqDist);
+						axisVector, center, estimatedAngle,
+						tuningStep, tuningRange, minAvgMinSqDist);
   return fineTunedAngle;
 }
 
@@ -771,6 +776,11 @@ double FindRotationAngle(MatrixType& originToPlaneMatrix,
 double EstimateRotationAngle(PointListType& inPlanePoints, PointListType& fixedPointList,
 			     VectorType axisVector, VectorType center)
 {
+  if (fixedPointList.size() < 1)
+    {
+    return 0;
+    }
+
   double estimatedAngle = -1.0;
   double minAverageMinSqDist = -1.0;
   PointListType rotatedPoints;
