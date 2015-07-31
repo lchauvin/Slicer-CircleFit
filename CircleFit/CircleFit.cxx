@@ -44,7 +44,7 @@ void   FindCircleFromPoints(PointListType& movingPointList, TransformType::Point
 
 void   FindCenter(PointListType& points, MatrixType& originalToPlaneMatrix, VectorType& center, double radius);
 
-int    FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMatrix, VectorType& center, double radius);
+int    FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMatrix, VectorType& center, double radius, double radiusRatioMarginError, double outOfPlaneMarginError);
 
 int   RemoveBiggestOutlierFromList(PointListType& pointList, double outlyingScores[], unsigned int size);
 
@@ -202,7 +202,7 @@ int main( int argc, char * argv[] )
     // of points in the list.
     // Then PCA is recalculated to get a more accurate center and plane orientation.
 
-    outlierFound = FindAndRemoveOutliers(fixedPointList, originToPlaneMatrix, center, srcRadius);
+    outlierFound = FindAndRemoveOutliers(fixedPointList, originToPlaneMatrix, center, srcRadius, RadiusRatioMarginError, OutOfPlaneMarginError);
 
     } while( outlierFound );
 
@@ -449,7 +449,7 @@ void FindCenter(PointListType& points, MatrixType& rotationMatrix, VectorType& c
 //----------------------------------------
 // Return 1 if outlier found and removed, 0 otherwise.
 
-int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMatrix, VectorType& center, double radius)
+int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMatrix, VectorType& center, double radius, double radiusRatioMarginError, double outOfPlaneMarginError)
 {
   // Get plane vectors
   VectorType nx;
@@ -478,10 +478,8 @@ int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMat
     }
 
   // Define margin error, based on circle radius
-  double outOfPlaneMargin = 2.0;
-  double radiusMargin = .2;
-  double radiusMax = radius*(1+radiusMargin);
-  double radiusMin = radius*(1-radiusMargin);
+  double radiusMax = radius*(1+radiusRatioMarginError);
+  double radiusMin = radius*(1-radiusRatioMarginError);
 
   //----------------------------------------
   // First Pass
@@ -554,7 +552,7 @@ int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMat
     // If detected point has some error in nz direction, it could be considered as outlier
     // if all other points are in the plane, which is untrue. Allowing a margin error
     // allow us to overcome this issue.
-    if ( distanceToProjection > outOfPlaneMargin )
+    if ( distanceToProjection > outOfPlaneMarginError )
       {
       scoreSecondPass[i] += distanceToProjection;
       }
