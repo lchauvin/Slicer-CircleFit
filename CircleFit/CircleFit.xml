@@ -43,4 +43,20 @@
       <channel>output</channel>
     </point>
   </parameters>
+
+  <parameters>
+    <label>Results</label>
+    <integer>
+      <label>Number of Outliers</label>
+      <name>numberOfOutliers</name>
+      <channel>output</channel>
+      <default>0</default>
+    </integer>
+    <double>
+      <label>Registration Error</label>
+      <name>registrationError</name>
+      <channel>output</channel>
+      <default>0.00</default>
+    </double>
+  </parameters>
 </executable>

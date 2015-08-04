@@ -149,6 +149,7 @@ int main( int argc, char * argv[] )
   VectorType center;
   VectorType nx, ny, nz;
 
+  numberOfOutliers = 0;
   do
     {
     // Convert vector points to ITK List
@@ -204,6 +205,11 @@ int main( int argc, char * argv[] )
 
     outlierFound = FindAndRemoveOutliers(fixedPointList, originToPlaneMatrix, center, srcRadius);
 
+    if (outlierFound)
+      {
+      numberOfOutliers++;
+      }
+
     } while( outlierFound );
 
   //----------------------------------------
@@ -246,10 +252,12 @@ int main( int argc, char * argv[] )
   if (minAvgMinSqDist < flippedMinAvgMinSqDist)
     {
     originToPlaneTransform->SetMatrix(originToPlaneMatrix);
+    registrationError = std::sqrt(minAvgMinSqDist);
     }
   else
     {
     originToPlaneTransform->SetMatrix(flippedOriginToPlaneMatrix);
+    registrationError = std::sqrt(flippedMinAvgMinSqDist);
     }
   originToPlaneTransform->SetOffset(center);
 
@@ -281,6 +289,12 @@ int main( int argc, char * argv[] )
     std::cerr << err << std::endl;
     return EXIT_FAILURE;
     }
+
+  std::ofstream rts;
+  rts.open(returnParameterFile.c_str());
+  rts << "numberOfOutliers = " << numberOfOutliers << std::endl;
+  rts << "registrationError = " << registrationError << std::endl;
+  rts.close();
 
   return EXIT_SUCCESS;
 }
