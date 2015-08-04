@@ -44,7 +44,7 @@ void   FindCircleFromPoints(PointListType& movingPointList, TransformType::Point
 
 void   FindCenter(PointListType& points, MatrixType& originalToPlaneMatrix, VectorType& center, double radius);
 
-int    FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMatrix, VectorType& center, double radius);
+int    FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMatrix, VectorType& center, double radius, double radiusRatioMarginError, double outOfPlaneMarginError);
 
 int   RemoveBiggestOutlierFromList(PointListType& pointList, double outlyingScores[], unsigned int size);
 
@@ -203,7 +203,7 @@ int main( int argc, char * argv[] )
     // of points in the list.
     // Then PCA is recalculated to get a more accurate center and plane orientation.
 
-    outlierFound = FindAndRemoveOutliers(fixedPointList, originToPlaneMatrix, center, srcRadius);
+    outlierFound = FindAndRemoveOutliers(fixedPointList, originToPlaneMatrix, center, srcRadius, RadiusRatioMarginError, OutOfPlaneMarginError);
 
     if (outlierFound)
       {
@@ -463,7 +463,7 @@ void FindCenter(PointListType& points, MatrixType& rotationMatrix, VectorType& c
 //----------------------------------------
 // Return 1 if outlier found and removed, 0 otherwise.
 
-int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMatrix, VectorType& center, double radius)
+int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMatrix, VectorType& center, double radius, double radiusRatioMarginError, double outOfPlaneMarginError)
 {
   // Get plane vectors
   VectorType nx;
@@ -492,10 +492,8 @@ int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMat
     }
 
   // Define margin error, based on circle radius
-  double outOfPlaneMargin = 2.0;
-  double radiusMargin = .2;
-  double radiusMax = radius*(1+radiusMargin);
-  double radiusMin = radius*(1-radiusMargin);
+  double radiusMax = radius*(1+radiusRatioMarginError);
+  double radiusMin = radius*(1-radiusRatioMarginError);
 
   //----------------------------------------
   // First Pass
@@ -568,7 +566,7 @@ int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMat
     // If detected point has some error in nz direction, it could be considered as outlier
     // if all other points are in the plane, which is untrue. Allowing a margin error
     // allow us to overcome this issue.
-    if ( distanceToProjection > outOfPlaneMargin )
+    if ( distanceToProjection > outOfPlaneMarginError )
       {
       scoreSecondPass[i] += distanceToProjection;
       }
@@ -698,6 +696,11 @@ int RemoveBiggestOutlierFromList(PointListType& pointList, double outlyingScores
 
 void FindCircleFromPoints(PointListType& movingPointList, TransformType::Pointer transform, double& radius)
 {
+  if (movingPointList.size() < 1)
+    {
+    return;
+    }
+
   VectorType v1 = movingPointList[1]-movingPointList[0];
   VectorType v2 = movingPointList[2]-movingPointList[0];
   VectorType srcNormal = itk::CrossProduct(v1, v2);
@@ -770,8 +773,8 @@ double FindRotationAngle(MatrixType& originToPlaneMatrix,
   double estimatedAngle = EstimateRotationAngle(inPlanePoints, fixedPointList,
                                                 axisVector, center);
   double fineTunedAngle = FineTuneRotationAngle(inPlanePoints, fixedPointList,
-					axisVector, center, estimatedAngle,
-					tuningStep, tuningRange, minAvgMinSqDist);
+						axisVector, center, estimatedAngle,
+						tuningStep, tuningRange, minAvgMinSqDist);
   return fineTunedAngle;
 }
 
@@ -785,6 +788,11 @@ double FindRotationAngle(MatrixType& originToPlaneMatrix,
 double EstimateRotationAngle(PointListType& inPlanePoints, PointListType& fixedPointList,
 			     VectorType axisVector, VectorType center)
 {
+  if (fixedPointList.size() < 1)
+    {
+    return 0;
+    }
+
   double estimatedAngle = -1.0;
   double minAverageMinSqDist = -1.0;
   PointListType rotatedPoints;

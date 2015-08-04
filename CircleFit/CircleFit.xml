@@ -45,6 +45,25 @@
   </parameters>
 
   <parameters>
+    <label>Outlier Detection Parameters</label>
+    <description><![CDATA[Outlier detection parameters]]></description>
+    <double>
+      <name>RadiusRatioMarginError</name>
+      <label>Radius Ratio Margin Error</label>
+      <longflag>--radiusRationMarginError</longflag>
+      <description><![CDATA[Ratio of the radius to use as a margin error. For example, a value of 0.2 will not consider points between 0.8 and 1.2*radius as outliers.]]></description>
+      <default>0.2</default>
+    </double>
+    <double>
+      <name>OutOfPlaneMarginError</name>
+      <label>Out-of-plane Margin Error</label>
+      <longflag>--outOfPlaneMarginError</longflag>
+      <description><![CDATA[Out-of-plane margin error in mm. For example, a value of 2.0 will not consider points less than 2mm out of the plane as outliers.]]></description>
+      <default>2.0</default>
+    </double>
+  </parameters>
+
+  <parameters>
     <label>Results</label>
     <integer>
       <label>Number of Outliers</label>
@@ -59,4 +78,5 @@
       <default>0.00</default>
     </double>
   </parameters>
+
 </executable>
