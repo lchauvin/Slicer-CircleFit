@@ -28,7 +28,7 @@
       <channel>input</channel>
     </point>
     <transform type="linear" fileExtensions=".txt">
-      <name>registration</name>
+      <name>registrationTransform</name>
       <label>Registration Transform</label>
       <longflag>--registration</longflag>
       <description><![CDATA[Output registration transform.]]></description>

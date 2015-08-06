@@ -261,25 +261,25 @@ int main( int argc, char * argv[] )
     }
   originToPlaneTransform->SetOffset(center);
 
-  TransformType::Pointer registrationTransform = TransformType::New();
-  registrationTransform->SetCenter(center);
+  TransformType::Pointer tmpRegistrationTransform = TransformType::New();
+  tmpRegistrationTransform->SetCenter(center);
 
   if (minAvgMinSqDist < flippedMinAvgMinSqDist)
     {
-    registrationTransform->Rotate3D(axisVector, bestAngle);
+    tmpRegistrationTransform->Rotate3D(axisVector, bestAngle);
     }
   else
     {
-    registrationTransform->Rotate3D(flippedAxisVector, flippedBestAngle);
+    tmpRegistrationTransform->Rotate3D(flippedAxisVector, flippedBestAngle);
     }
 
-  registrationTransform->Compose(originToPlaneTransform, true);
-  registrationTransform->Compose(movingToOriginTransform, true);
+  tmpRegistrationTransform->Compose(originToPlaneTransform, true);
+  tmpRegistrationTransform->Compose(movingToOriginTransform, true);
 
   // Output
   TransformWriterType::Pointer registrationTransformWriter = TransformWriterType::New();
-  registrationTransformWriter->SetInput(registrationTransform->GetInverseTransform());
-  registrationTransformWriter->SetFileName(registration);
+  registrationTransformWriter->SetInput(tmpRegistrationTransform->GetInverseTransform());
+  registrationTransformWriter->SetFileName(registrationTransform);
   try
     {
     registrationTransformWriter->Update();
@@ -380,7 +380,15 @@ void FindCenter(PointListType& points, MatrixType& rotationMatrix, VectorType& c
 {
 
   //----------------------------------------
+  // Initialize center to avoid undefined center values if center cannot be calculated
+
+  center[0] = 0.0;
+  center[1] = 0.0;
+  center[2] = 0.0;
+
+  //----------------------------------------
   // Transform the center point to the original coordinate system
+
   VectorType nx;
   VectorType ny;
   VectorType nz;
@@ -396,6 +404,7 @@ void FindCenter(PointListType& points, MatrixType& rotationMatrix, VectorType& c
   // Calculate the average position of the all points.
   // This is used as the origin of the new coordinate system on the
   // fitted plane.
+
   VectorType meanPoint;
   for (size_t i = 0; i < points.size(); ++i)
     {
@@ -428,9 +437,7 @@ void FindCenter(PointListType& points, MatrixType& rotationMatrix, VectorType& c
   meanIntersect[1] = 0.0;
   meanIntersect[2] = 0.0;
 
-  int nPoints = 0;
   int nPointsUsed = 0;
-
   for (size_t i = 0; i < projectedPoints.size(); ++i)
     {
     for (size_t j = i+1; j < projectedPoints.size(); ++j)
@@ -442,7 +449,6 @@ void FindCenter(PointListType& points, MatrixType& rotationMatrix, VectorType& c
         VectorType p3 = projectedPoints[k];
         VectorType c;
 
-        nPoints ++;
         if (CalcIntersectionOfPerpendicularBisectors2D(p1, p2, p3, c, radius) > 0)
           {
           meanIntersect = meanIntersect + c;
@@ -452,9 +458,12 @@ void FindCenter(PointListType& points, MatrixType& rotationMatrix, VectorType& c
       }
     }
 
-  meanIntersect /= (double)nPointsUsed;
-
-  center = meanIntersect[0] * nx + meanIntersect[1] * ny + meanIntersect[2] * nz + meanPoint;
+  // Avoid division by 0
+  if (nPointsUsed > 0)
+    {
+    meanIntersect /= (double)nPointsUsed;
+    center = meanIntersect[0] * nx + meanIntersect[1] * ny + meanIntersect[2] * nz + meanPoint;
+    }
 
   std::cout << "Center = " << center << std::endl;  
   std::cout << std::endl;
