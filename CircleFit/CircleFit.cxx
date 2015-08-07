@@ -379,6 +379,11 @@ int CalcIntersectionOfPerpendicularBisectors2D(VectorType& p1, VectorType& p2, V
 void FindCenter(PointListType& points, MatrixType& rotationMatrix, VectorType& center, double radius=0)
 {
 
+  if (points.size() < 1)
+    {
+    return;
+    }
+
   //----------------------------------------
   // Initialize center to avoid undefined center values if center cannot be calculated
 
@@ -496,7 +501,6 @@ int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMat
     p2[0] = p1*nx;
     p2[1] = p1*ny;
     p2[2] = 0.0;
-
     projectedPoints.push_back(p2);
     }
 
@@ -927,6 +931,11 @@ double AverageMinimumSquareDistance(PointListType& set1, PointListType& set2)
   // We then defined smallest = set1, biggest = set2
   PointListType smallestSet = (set1.size() <= set2.size() ? set1 : set2);
   PointListType biggestSet = (set1.size() > set2.size() ? set1 : set2);
+
+  if (smallestSet.size() < 1)
+    {
+    return -1;
+    }
 
   double sumMinSquareDistance = 0.0;
   for (size_t i = 0; i < smallestSet.size(); ++i)
