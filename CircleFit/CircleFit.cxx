@@ -305,7 +305,8 @@ int main( int argc, char * argv[] )
 int CalcIntersectionOfPerpendicularBisectors2D(VectorType& p1, VectorType& p2, VectorType& p3, VectorType& intersect, double radius)
 {
 
-  const double posErr = 5.0;
+  // TODO: Should be a ratio of the radius
+  const double posErr = 10.0;
 
   // Compute the bisecting points between p1 and p2 (m1), and p2 and p3 (m2)
   VectorType m1 = (p1+p2)/2.0;
@@ -458,7 +459,7 @@ void FindCenter(PointListType& points, MatrixType& rotationMatrix, VectorType& c
           {
           meanIntersect = meanIntersect + c;
           nPointsUsed ++;
-          }
+	  }
         }
       }
     }
