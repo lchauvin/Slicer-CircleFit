@@ -46,7 +46,7 @@ void   FindCenter(PointListType& points, MatrixType& originalToPlaneMatrix, Vect
 
 int    FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMatrix, VectorType& center, double radius, double radiusRatioMarginError, double outOfPlaneMarginError);
 
-int   RemoveBiggestOutlierFromList(PointListType& pointList, double outlyingScores[], unsigned int size);
+int    RemoveLargestOutlierFromList(PointListType& pointList, double outlyingScores[], unsigned int size);
 
 double FindRotationAngle(MatrixType& originalToPlaneMatrix,
                          PointListType& movingPointList,
@@ -199,7 +199,7 @@ int main( int argc, char * argv[] )
     //----------------------------------------
     // 4. Remove outliers.
 
-    // After this line, bigger outliers will be removed from fixedPointList, eventually reducing number
+    // After this line, larger outliers will be removed from fixedPointList, eventually reducing number
     // of points in the list.
     // Then PCA is recalculated to get a more accurate center and plane orientation.
 
@@ -535,7 +535,7 @@ int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMat
     }
 
   std::cout << "First Pass Results: " << std::endl;
-  if ( RemoveBiggestOutlierFromList(fixedPointList, scoreFirstPass, fixedPointList.size()) )
+  if ( RemoveLargestOutlierFromList(fixedPointList, scoreFirstPass, fixedPointList.size()) )
     {
     std::cout << "[First Pass]: Outlier found and removed." << std::endl;
     return 1;
@@ -587,7 +587,7 @@ int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMat
     }
 
   std::cout << "Second Pass Results: " << std::endl;
-  if ( RemoveBiggestOutlierFromList(fixedPointList, scoreSecondPass, fixedPointList.size()) )
+  if ( RemoveLargestOutlierFromList(fixedPointList, scoreSecondPass, fixedPointList.size()) )
     {
     std::cout << "[Second Pass]: Outlier found and removed." << std::endl;
     return 1;
@@ -652,7 +652,7 @@ int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMat
     }
 
   std::cout << "Third Pass Results: " << std::endl;
-  if ( RemoveBiggestOutlierFromList(fixedPointList, scoreThirdPass, projectedPoints.size()) )
+  if ( RemoveLargestOutlierFromList(fixedPointList, scoreThirdPass, projectedPoints.size()) )
     {
     std::cout << "[Third Pass]: Outlier found and removed." << std::endl;
     return 1;
@@ -663,14 +663,14 @@ int FindAndRemoveOutliers(PointListType& fixedPointList, MatrixType& rotationMat
 }
 
 //----------------------------------------
-// Find biggest outlier from the list and remove it.
+// Find largest outlier from the list and remove it.
 // To overcome some possible equality in the scores when using integers,
 // we score points using doubles.
 // It is much more unlikely to have two double numbers strictly equal,
 // than it is with integers.
 // Return 1 if outlier has been removed, 0 otherwise
 
-int RemoveBiggestOutlierFromList(PointListType& pointList, double outlyingScores[], unsigned int size)
+int RemoveLargestOutlierFromList(PointListType& pointList, double outlyingScores[], unsigned int size)
 {
   if (pointList.size() != size)
     {
@@ -929,9 +929,9 @@ void RotatePoints(PointListType& inputPoints,
 double AverageMinimumSquareDistance(PointListType& set1, PointListType& set2)
 {
   // If set1 and set2 have the same size, order doesn't matter.
-  // We then defined smallest = set1, biggest = set2
+  // We then defined smallest = set1, largest = set2
   PointListType smallestSet = (set1.size() <= set2.size() ? set1 : set2);
-  PointListType biggestSet = (set1.size() > set2.size() ? set1 : set2);
+  PointListType largestSet = (set1.size() > set2.size() ? set1 : set2);
 
   if (smallestSet.size() < 1)
     {
@@ -944,9 +944,9 @@ double AverageMinimumSquareDistance(PointListType& set1, PointListType& set2)
     double minSquareDistance = -1.0;
     VectorType p1 = smallestSet[i];
 
-    for (size_t j = 0; j < biggestSet.size(); ++j)
+    for (size_t j = 0; j < largestSet.size(); ++j)
       {
-      VectorType p2 = biggestSet[j];
+      VectorType p2 = largestSet[j];
       VectorType d = p2-p1;
 
       double squareDistance = d.GetSquaredNorm();
