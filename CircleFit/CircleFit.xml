@@ -30,7 +30,7 @@
     <transform type="linear" fileExtensions=".txt">
       <name>registrationTransform</name>
       <label>Registration Transform</label>
-      <longflag>--registration</longflag>
+      <longflag>--registrationTransform</longflag>
       <description><![CDATA[Output registration transform.]]></description>
       <channel>output</channel>
     </transform>
