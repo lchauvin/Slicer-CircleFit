@@ -412,6 +412,9 @@ void FindCenter(PointListType& points, MatrixType& rotationMatrix, VectorType& c
   // fitted plane.
 
   VectorType meanPoint;
+  meanPoint[0] = 0.0;
+  meanPoint[1] = 0.0;
+  meanPoint[2] = 0.0;
   for (size_t i = 0; i < points.size(); ++i)
     {
     meanPoint += points[i];
